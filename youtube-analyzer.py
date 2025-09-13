@@ -24,7 +24,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("📊 YouTube Analyzer By Ardhan - ATM Edition (All-in-One)")
+st.title("📊 YouTube Analyzer By Ardhan")
 
 # === Input API Key YouTube ===
 api_key = st.text_input("🔑 Masukkan YouTube API Key", type="password")
@@ -43,7 +43,7 @@ if st.button("📥 Ambil API Key YouTube"):
     """)
 
 # === Input Query ===
-query = st.text_input("🎯 Masukkan niche/keyword (contoh: Healing Flute)")
+query = st.text_input("🎯 Masukkan niche/keyword (contoh: Music)")
 region = st.selectbox("🌍 Negara Target", ["ALL","US","ID","JP","BR","IN","DE","GB","FR","ES"])
 video_type = st.selectbox("🎥 Jenis Video", ["Semua","Reguler","Shorts","Live"])
 
