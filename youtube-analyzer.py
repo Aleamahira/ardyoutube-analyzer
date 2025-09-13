@@ -13,7 +13,8 @@ import google.generativeai as genai
 
 # === Konfigurasi Awal ===
 st.set_page_config(page_title="YouTube Analyzer By Ardhan", layout="wide")
-st.title("📊 YouTube Analyzer ( By Ardhan )")
+
+st.title("📊 YouTube Analyzer By Ardhan - ATM Edition (All-in-One)")
 
 # === Input API Keys ===
 api_key = st.text_input("🔑 Masukkan YouTube API Key", type="password")
@@ -33,84 +34,31 @@ st.markdown(
 if gemini_api_key:
     genai.configure(api_key=gemini_api_key)
 
-# === List kode negara YouTube + nama ===
-YOUTUBE_REGIONS = {
-    "ALL": "🌍 Global (Semua Negara)",
-    "US": "🇺🇸 United States",
-    "ID": "🇮🇩 Indonesia",
-    "JP": "🇯🇵 Japan",
-    "BR": "🇧🇷 Brazil",
-    "IN": "🇮🇳 India",
-    "DE": "🇩🇪 Germany",
-    "GB": "🇬🇧 United Kingdom",
-    "FR": "🇫🇷 France",
-    "ES": "🇪🇸 Spain",
-    "IT": "🇮🇹 Italy",
-    "MX": "🇲🇽 Mexico",
-    "KR": "🇰🇷 South Korea",
-    "CA": "🇨🇦 Canada",
-    "RU": "🇷🇺 Russia",
-    "TR": "🇹🇷 Turkey",
-    "VN": "🇻🇳 Vietnam",
-    "PH": "🇵🇭 Philippines",
-    "MY": "🇲🇾 Malaysia",
-    "NG": "🇳🇬 Nigeria",
-    "EG": "🇪🇬 Egypt",
-    "SA": "🇸🇦 Saudi Arabia",
-    "AE": "🇦🇪 United Arab Emirates",
-    "TH": "🇹🇭 Thailand",
-    "SG": "🇸🇬 Singapore",
-    "ZA": "🇿🇦 South Africa",
-}
-
 # === Input Query ===
 query = st.text_input("🎯 Masukkan niche/keyword (contoh: Healing Flute)")
-selected_regions = st.multiselect(
-    "🌍 Pilih Negara Target (bisa lebih dari satu)",
-    options=list(YOUTUBE_REGIONS.values()),
-    default=["🌍 Global (Semua Negara)"]
-)
-region_codes = [code for code, name in YOUTUBE_REGIONS.items() if name in selected_regions]
-
+region = st.selectbox("🌍 Negara Target", ["ALL","US","ID","JP","BR","IN","DE","GB","FR","ES"])
 video_type = st.selectbox("🎥 Jenis Video", ["Semua","Reguler","Shorts","Live"])
-max_results = st.slider("Jumlah video yang dianalisis per negara", 5, 50, 20)
+max_results = st.slider("Jumlah video yang dianalisis", 5, 50, 20)
 
 # === API endpoints ===
 YOUTUBE_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 YOUTUBE_VIDEO_URL = "https://www.googleapis.com/youtube/v3/videos"
 
 # === Fungsi Helper ===
-def search_videos(query, max_results=10, regions=None):
-    results = []
-    if not regions or "ALL" in regions:
-        params = {
-            "part": "snippet",
-            "q": query,
-            "type": "video",
-            "maxResults": max_results,
-            "order": "date",
-            "key": api_key
-        }
-        res = requests.get(YOUTUBE_SEARCH_URL, params=params).json().get("items", [])
-        for r in res:
-            r["region"] = "ALL"
-        results.extend(res)
-    else:
-        for region_code in regions:
-            params = {
-                "part": "snippet",
-                "q": query,
-                "type": "video",
-                "maxResults": max_results,
-                "order": "date",
-                "regionCode": region_code,
-                "key": api_key
-            }
-            res = requests.get(YOUTUBE_SEARCH_URL, params=params).json().get("items", [])
-            for r in res:
-                r["region"] = region_code
-            results.extend(res)
-    return results
+def search_videos(query, max_results=10):
+    params = {
+        "part": "snippet",
+        "q": query,
+        "type": "video",
+        "maxResults": max_results,
+        "order": "date",
+        "key": api_key
+    }
+    if region != "ALL":
+        params["regionCode"] = region
+    if video_type == "Live":
+        params["eventType"] = "live"
+    return requests.get(YOUTUBE_SEARCH_URL, params=params).json().get("items", [])
 
 def get_video_stats(video_ids):
     params = {
@@ -134,8 +82,8 @@ if st.button("🔍 Analisis Video"):
     elif not query:
         st.error("⚠️ Masukkan keyword niche!")
     else:
-        videos = search_videos(query, max_results=max_results, regions=region_codes)
-        video_ids = [v["id"]["videoId"] for v in videos if "videoId" in v["id"]]
+        videos = search_videos(query, max_results=max_results)
+        video_ids = [v["id"]["videoId"] for v in videos]
         video_details = get_video_stats(video_ids)
 
         data, all_tags, title_lengths = [], [], []
@@ -144,7 +92,6 @@ if st.button("🔍 Analisis Video"):
             vid = v["id"]
             snippet = v["snippet"]
             stats = v["statistics"]
-            region_code = next((item["region"] for item in videos if "videoId" in item["id"] and item["id"]["videoId"] == vid), "Unknown")
 
             title = snippet["title"]
             channel = snippet["channelTitle"]
@@ -166,22 +113,137 @@ if st.button("🔍 Analisis Video"):
                 title, channel, views, vph, len(title),
                 published_time.strftime("%Y-%m-%d %H:%M"),
                 thumb, f"https://img.youtube.com/vi/{vid}/maxresdefault.jpg",
-                f"https://www.youtube.com/watch?v={vid}",
-                region_code
+                f"https://www.youtube.com/watch?v={vid}"
             ])
 
         df = pd.DataFrame(data, columns=[
             "Judul","Channel","Views","VPH","Panjang Judul","Publish Time",
-            "Thumbnail","Download Link","Video Link","Region"
+            "Thumbnail","Download Link","Video Link"
         ])
         df = df.sort_values(by="VPH", ascending=False)
 
-        # === Filter Region ===
-        st.subheader("🌍 Filter Hasil berdasarkan Region")
-        available_regions = df["Region"].unique().tolist()
-        selected_region_filter = st.multiselect("Pilih region untuk ditampilkan", available_regions, default=available_regions)
-        filtered_df = df[df["Region"].isin(selected_region_filter)]
-
         # === Hasil Utama ===
         st.subheader("📈 Hasil Analisis Video")
-        st.dataframe(filtered_df[["Judul","Channel","Views","VPH","Panjang Judul","Publish Time","Region"]])
+        st.dataframe(df[["Judul","Channel","Views","VPH","Panjang Judul","Publish Time"]])
+
+        # === Preview Thumbnail ===
+        st.subheader("🖼️ Preview Thumbnail & Link Video")
+        for i, row in df.iterrows():
+            st.markdown(f"### ▶️ [{row['Judul']}]({row['Video Link']})")
+            st.image(row["Thumbnail"], width=300, caption=f"VPH: {row['VPH']}")
+            st.markdown(f"[📥 Download Thumbnail]({row['Download Link']})")
+
+        # === Panjang Judul ===
+        st.subheader("📏 Analisis Panjang Judul")
+        avg_len = round(sum(title_lengths)/len(title_lengths),2)
+        st.write(f"- Rata-rata panjang judul: **{avg_len} karakter**")
+        st.write(f"- Terpendek: {min(title_lengths)} | Terpanjang: {max(title_lengths)}")
+        st.write(f"- Rekomendasi: fokus di sekitar **{int(avg_len-5)}–{int(avg_len+10)} karakter**")
+
+        # === SEO-Friendly Titles ===
+        st.subheader("📝 Rekomendasi Judul SEO-Friendly")
+        unique_tags = list(set([t for t in all_tags if len(t) > 3]))
+        seo_titles = []
+        for i in range(10):
+            selected = random.sample(unique_tags, min(6,len(unique_tags)))
+            new_title = " ".join(selected).title()
+            if len(new_title) < avg_len-10:
+                new_title += " Music Relaxation"
+            seo_titles.append(new_title)
+        for idx,title in enumerate(seo_titles,1):
+            st.write(f"{idx}. {title}")
+
+        # === Tags ===
+        st.subheader("🏷️ Rekomendasi Tag")
+        counter = Counter([t.lower() for t in all_tags if len(t) > 3])
+        top_tags = [tag for tag,_ in counter.most_common(25)]
+        st.write(", ".join(top_tags))
+
+        # === Word Cloud ===
+        st.subheader("☁️ Word Cloud dari Judul & Tag")
+        text_blob = " ".join(all_tags)
+        if text_blob.strip():
+            wc = WordCloud(width=800, height=400, background_color="white").generate(text_blob)
+            fig, ax = plt.subplots(figsize=(10,5))
+            ax.imshow(wc, interpolation="bilinear")
+            ax.axis("off")
+            st.pyplot(fig)
+
+        # === Channel Authority ===
+        st.subheader("📺 Data Channel (Authority & Consistency)")
+        channel_stats = df.groupby("Channel").agg({
+            "Views":"sum",
+            "VPH":"mean",
+            "Judul":"count"
+        }).reset_index().rename(columns={"Judul":"Jumlah Video"})
+        channel_stats["Authority Score"] = round(channel_stats["VPH"] * channel_stats["Jumlah Video"],2)
+        st.dataframe(channel_stats)
+
+        # === Heatmap Upload Time ===
+        st.subheader("🕒 Best Time to Upload (Heatmap)")
+        df["Publish Datetime"] = pd.to_datetime(df["Publish Time"])
+        df["Hour"] = df["Publish Datetime"].dt.hour
+        df["Day"] = df["Publish Datetime"].dt.day_name()
+        heatmap_data = df.pivot_table(index="Day", columns="Hour", values="Judul", aggfunc="count").fillna(0)
+        plt.figure(figsize=(12,6))
+        sns.heatmap(heatmap_data, cmap="YlOrRd", linewidths=0.5, annot=True, fmt=".0f")
+        plt.title("Distribusi Upload Video (Jam vs Hari)")
+        st.pyplot(plt)
+
+        # === Top 10% Segmentation ===
+        st.subheader("🔥 Video Performance Segmentation (Top 10% VPH)")
+        threshold = df["VPH"].quantile(0.9)
+        top_videos = df[df["VPH"] >= threshold]
+        st.write(f"Menampilkan {len(top_videos)} video dengan VPH di atas {threshold:.2f}")
+        st.dataframe(top_videos[["Judul","Channel","Views","VPH","Publish Time"]])
+
+        # Rekomendasi judul dari pola top 10%
+        all_top_tags = []
+        for title in top_videos["Judul"].tolist():
+            all_top_tags.extend(title.split())
+        unique_top_tags = list(set([t for t in all_top_tags if len(t) > 3]))
+        st.subheader("📝 Judul dari Pola Video Top 10%")
+        for i in range(5):
+            st.write(f"{i+1}. {' '.join(random.sample(unique_top_tags, min(6,len(unique_top_tags)))).title()}")
+
+        # === Competitor Gap Finder ===
+        st.subheader("🕵️ Competitor Gap Finder")
+        freq_all = Counter([t.lower() for t in all_tags if len(t) > 3])
+        freq_top = Counter([t.lower() for t in all_top_tags if len(t) > 3])
+        gap_keywords = [tag for tag,count in freq_top.items() if freq_all[tag] <= 2]
+        st.write("💡 Keyword unik dari video top, jarang dipakai lainnya:")
+        st.write(", ".join(gap_keywords))
+
+        # === Trend Detector ===
+        st.subheader("📊 Trend Detector (Google Trends)")
+        try:
+            pytrends = TrendReq(hl='en-US', tz=360)
+            kw_list = [query]
+            geo = region if region != "ALL" else ""
+            pytrends.build_payload(kw_list, cat=0, timeframe='today 3-m', geo=geo, gprop='')
+            trend_data = pytrends.interest_over_time()
+            if not trend_data.empty:
+                st.line_chart(trend_data[query])
+            else:
+                st.info("Tidak ada data tren untuk keyword ini.")
+        except Exception as e:
+            st.warning(f"Gagal ambil data tren: {e}")
+
+        # === Export CSV ===
+        st.download_button("⬇️ Download CSV", df.to_csv(index=False), file_name="youtube_vph_data.csv", mime="text/csv")
+
+        # === AI Assistant (jika ada API Key Gemini) ===
+        if gemini_api_key:
+            st.subheader("🤖 AI Assistant (Gemini)")
+
+            if st.button("Generate Judul Otomatis"):
+                prompt = f"Buatkan 5 judul YouTube SEO-friendly, user friendly, berdasarkan niche '{query}' dan data kompetitor: {', '.join(top_tags[:10])}"
+                st.write(generate_ai_content(prompt))
+
+            if st.button("Generate Deskripsi Otomatis"):
+                prompt = f"Tuliskan deskripsi YouTube yang SEO-friendly untuk niche '{query}', dengan memasukkan keyword: {', '.join(top_tags[:10])}."
+                st.write(generate_ai_content(prompt))
+
+            if st.button("Translate Judul ke Inggris/Spanyol"):
+                prompt = f"Terjemahkan 5 judul YouTube berikut ke bahasa Inggris dan Spanyol: {seo_titles[:5]}"
+                st.write(generate_ai_content(prompt))
