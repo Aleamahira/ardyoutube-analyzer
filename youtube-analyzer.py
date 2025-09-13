@@ -115,11 +115,22 @@ if st.button("🔍 Analisis Video"):
             "Judul","Channel","Views","VPH","Panjang Judul","Publish Time",
             "Thumbnail","Download Link","Video Link"
         ])
-        df = df.sort_values(by="VPH", ascending=False)
 
-        # === Hasil Utama ===
-        st.subheader("📈 Hasil Analisis Video")
-        st.dataframe(df[["Judul","Channel","Views","VPH","Panjang Judul","Publish Time"]])
+        # === Filter video valid (buang Views=0 atau VPH=0) ===
+        df = df[(df["VPH"] > 0) & (df["Views"] > 0)]
+
+        # === Hasil Utama (VPH Tertinggi) ===
+        st.subheader("📈 Hasil Analisis Video (Berdasarkan VPH Tertinggi, 12 Bulan Terakhir)")
+        df_vph = df.sort_values(by="VPH", ascending=False)
+        st.dataframe(df_vph[["Judul","Channel","Views","VPH","Panjang Judul","Publish Time"]])
+
+        # === Hasil Tambahan (Views Tertinggi) ===
+        st.subheader("👑 Video dengan Views Tertinggi (12 Bulan Terakhir)")
+        df_views = df.sort_values(by="Views", ascending=False)
+        st.dataframe(df_views[["Judul","Channel","Views","VPH","Panjang Judul","Publish Time"]])
+
+        # === Konfirmasi Rentang Waktu ===
+        st.info("⚡ Semua data di atas hanya menampilkan video dengan Views > 0 dan VPH > 0 dari 12 bulan terakhir.")
 
         # === Preview Thumbnail ===
         st.subheader("🖼️ Preview Thumbnail & Link Video")
@@ -130,21 +141,23 @@ if st.button("🔍 Analisis Video"):
 
         # === Panjang Judul ===
         st.subheader("📏 Analisis Panjang Judul")
-        avg_len = round(sum(title_lengths)/len(title_lengths),2)
-        st.write(f"- Rata-rata panjang judul: **{avg_len} karakter**")
-        st.write(f"- Terpendek: {min(title_lengths)} | Terpanjang: {max(title_lengths)}")
-        st.write(f"- Rekomendasi: fokus di sekitar **{int(avg_len-5)}–{int(avg_len+10)} karakter**")
+        avg_len = round(sum(title_lengths)/len(title_lengths),2) if title_lengths else 0
+        if avg_len > 0:
+            st.write(f"- Rata-rata panjang judul: **{avg_len} karakter**")
+            st.write(f"- Terpendek: {min(title_lengths)} | Terpanjang: {max(title_lengths)}")
+            st.write(f"- Rekomendasi: fokus di sekitar **{int(avg_len-5)}–{int(avg_len+10)} karakter**")
 
         # === SEO-Friendly Titles ===
         st.subheader("📝 Rekomendasi Judul SEO-Friendly")
         unique_tags = list(set([t for t in all_tags if len(t) > 3]))
         seo_titles = []
         for i in range(10):
-            selected = random.sample(unique_tags, min(6,len(unique_tags)))
-            new_title = " ".join(selected).title()
-            if len(new_title) < avg_len-10:
-                new_title += " Music Relaxation"
-            seo_titles.append(new_title)
+            if unique_tags:
+                selected = random.sample(unique_tags, min(6,len(unique_tags)))
+                new_title = " ".join(selected).title()
+                if len(new_title) < avg_len-10:
+                    new_title += " Music Relaxation"
+                seo_titles.append(new_title)
         for idx,title in enumerate(seo_titles,1):
             st.write(f"{idx}. {title}")
 
@@ -206,41 +219,30 @@ if st.button("🔍 Analisis Video"):
         plt.ylabel("Hari")
         st.pyplot(plt)
 
-        # Tambahan keterangan untuk pemula
-        st.markdown("""
-✅ **Cara Membaca Heatmap**  
-- Warna **lebih gelap/biru tua** = lebih banyak video kompetitor upload di jam tersebut.  
-- Angka di dalam kotak = jumlah video yang diupload.  
-- Cari jam/hari dengan warna **paling pekat** → itulah waktu paling sering dipakai untuk upload.  
-
-💡 **Tips untuk Pemula**  
-- Upload di jam **ramai (warna pekat)** untuk mengikuti tren.  
-- Upload di jam **sepi (warna terang)** jika ingin lebih menonjol dibanding kompetitor.
-""")
-
         # === Top 10% Segmentation ===
         st.subheader("🔥 Video Performance Segmentation (Top 10% VPH)")
-        threshold = df["VPH"].quantile(0.9)
-        top_videos = df[df["VPH"] >= threshold]
-        st.write(f"Menampilkan {len(top_videos)} video dengan VPH di atas {threshold:.2f}")
-        st.dataframe(top_videos[["Judul","Channel","Views","VPH","Publish Time"]])
+        if not df.empty:
+            threshold = df["VPH"].quantile(0.9)
+            top_videos = df[df["VPH"] >= threshold]
+            st.write(f"Menampilkan {len(top_videos)} video dengan VPH di atas {threshold:.2f}")
+            st.dataframe(top_videos[["Judul","Channel","Views","VPH","Publish Time"]])
 
-        # Rekomendasi judul dari pola top 10%
-        all_top_tags = []
-        for title in top_videos["Judul"].tolist():
-            all_top_tags.extend(title.split())
-        unique_top_tags = list(set([t for t in all_top_tags if len(t) > 3]))
-        st.subheader("📝 Judul dari Pola Video Top 10%")
-        for i in range(5):
-            st.write(f"{i+1}. {' '.join(random.sample(unique_top_tags, min(6,len(unique_top_tags)))).title()}")
+            # Rekomendasi judul dari pola top 10%
+            all_top_tags = []
+            for title in top_videos["Judul"].tolist():
+                all_top_tags.extend(title.split())
+            unique_top_tags = list(set([t for t in all_top_tags if len(t) > 3]))
+            st.subheader("📝 Judul dari Pola Video Top 10%")
+            for i in range(min(5, len(unique_top_tags))):
+                st.write(f"{i+1}. {' '.join(random.sample(unique_top_tags, min(6,len(unique_top_tags)))).title()}")
 
-        # === Competitor Gap Finder ===
-        st.subheader("🕵️ Competitor Gap Finder")
-        freq_all = Counter([t.lower() for t in all_tags if len(t) > 3])
-        freq_top = Counter([t.lower() for t in all_top_tags if len(t) > 3])
-        gap_keywords = [tag for tag,count in freq_top.items() if freq_all[tag] <= 2]
-        st.write("💡 Keyword unik dari video top, jarang dipakai lainnya:")
-        st.write(", ".join(gap_keywords))
+            # === Competitor Gap Finder ===
+            st.subheader("🕵️ Competitor Gap Finder")
+            freq_all = Counter([t.lower() for t in all_tags if len(t) > 3])
+            freq_top = Counter([t.lower() for t in all_top_tags if len(t) > 3])
+            gap_keywords = [tag for tag,count in freq_top.items() if freq_all[tag] <= 2]
+            st.write("💡 Keyword unik dari video top, jarang dipakai lainnya:")
+            st.write(", ".join(gap_keywords))
 
         # === Trend Detector ===
         st.subheader("📊 Trend Detector (Google Trends)")
