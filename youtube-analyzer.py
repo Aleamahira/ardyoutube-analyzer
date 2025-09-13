@@ -1,14 +1,14 @@
 import streamlit as st
 import requests
+import pandas as pd
 from datetime import datetime, timezone
 
-# === Konfigurasi Awal ===
 st.set_page_config(page_title="YouTube Trending Explorer", layout="wide")
 
 st.title("🎬 YouTube Trending Explorer")
 st.write("Temukan video trending dan populer dari seluruh dunia")
 
-# === Input API Key ===
+# === API Key ===
 if "api_key" not in st.session_state:
     st.session_state.api_key = ""
 
@@ -29,7 +29,7 @@ with st.form("youtube_form"):
     sort_option = st.selectbox("Urutkan:", ["Paling Relevan", "Paling Banyak Ditonton", "Terbaru", "VPH Tertinggi"])
     submit = st.form_submit_button("🔍 Cari Video")
 
-# === Fungsi Utility ===
+# === Utility ===
 def hitung_vph(views, publishedAt):
     published_time = datetime.strptime(publishedAt, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
     hours = (datetime.now(timezone.utc) - published_time).total_seconds() / 3600
@@ -53,7 +53,11 @@ def format_time(publishedAt):
         return f"{delta//30} bulan lalu"
     return f"{delta//365} tahun lalu"
 
-# === Panggil API YouTube ===
+def format_jam(publishedAt):
+    dt = datetime.strptime(publishedAt, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    return dt.strftime("%Y-%m-%d %H:%M UTC")
+
+# === API YouTube ===
 def get_youtube_videos(api_key, query, max_results=15):
     url = "https://www.googleapis.com/youtube/v3/search"
     params = {
@@ -101,10 +105,10 @@ def urutkan_video(data, mode):
         return sorted(data, key=lambda x: x["publishedAt"], reverse=True)
     elif mode == "VPH Tertinggi":
         return sorted(data, key=lambda x: x["vph"], reverse=True)
-    else:  # relevan (default API)
+    else:
         return data
 
-# === Jalankan pencarian ===
+# === Jalankan ===
 if submit:
     with st.spinner("Mengambil data dari YouTube..."):
         videos = get_youtube_videos(st.session_state.api_key, keyword)
@@ -115,9 +119,11 @@ if submit:
     else:
         st.success(f"{len(videos)} video ditemukan")
 
-        # === Tampilkan Video dengan Badge ===
+        # tampilkan video
         cols = st.columns(3)
         all_titles = []
+        data_excel = []
+
         for i, v in enumerate(videos):
             with cols[i % 3]:
                 st.image(v["thumbnail"])
@@ -126,29 +132,31 @@ if submit:
 
                 col1, col2, col3 = st.columns(3)
                 with col1:
-                    st.markdown(
-                        f"<div style='background:#ff4b4b;color:white;padding:4px 8px;border-radius:6px;display:inline-block'>👁 {format_views(v['views'])} views</div>",
-                        unsafe_allow_html=True
-                    )
+                    st.markdown(f"<div style='background:#ff4b4b;color:white;padding:4px 8px;border-radius:6px;display:inline-block'>👁 {format_views(v['views'])} views</div>", unsafe_allow_html=True)
                 with col2:
-                    st.markdown(
-                        f"<div style='background:#4b8bff;color:white;padding:4px 8px;border-radius:6px;display:inline-block'>⚡ {v['vph']} VPH</div>",
-                        unsafe_allow_html=True
-                    )
+                    st.markdown(f"<div style='background:#4b8bff;color:white;padding:4px 8px;border-radius:6px;display:inline-block'>⚡ {v['vph']} VPH</div>", unsafe_allow_html=True)
                 with col3:
-                    st.markdown(
-                        f"<div style='background:#4caf50;color:white;padding:4px 8px;border-radius:6px;display:inline-block'>⏱ {format_time(v['publishedAt'])}</div>",
-                        unsafe_allow_html=True
-                    )
+                    st.markdown(f"<div style='background:#4caf50;color:white;padding:4px 8px;border-radius:6px;display:inline-block'>⏱ {format_time(v['publishedAt'])}</div>", unsafe_allow_html=True)
+
+                st.caption(f"📅 {format_jam(v['publishedAt'])}")
 
             all_titles.append(v["title"])
+            data_excel.append({
+                "Judul": v["title"],
+                "Channel": v["channel"],
+                "Views": v["views"],
+                "VPH": v["vph"],
+                "Tanggal Upload": format_time(v["publishedAt"]),
+                "Jam Upload": format_jam(v["publishedAt"]),
+                "Link": f"https://www.youtube.com/watch?v={v['id']}"
+            })
 
-        # === Rekomendasi Judul ===
-        st.subheader("💡 Rekomendasi Judul untuk Dipakai")
+        # rekomendasi judul
+        st.subheader("💡 Rekomendasi Judul")
         for r in all_titles[:5]:
             st.text_input("Copy Judul", r)
 
-        # === Auto Tag 500 karakter ===
+        # auto tag
         st.subheader("🏷️ Rekomendasi Tag (Max 500 karakter)")
         kata_unik = []
         for t in all_titles:
@@ -156,10 +164,18 @@ if submit:
                 w = w.lower().strip("|,.-")
                 if w not in kata_unik:
                     kata_unik.append(w)
-
         tag_string = ", ".join(kata_unik)
         if len(tag_string) > 500:
             tag_string = tag_string[:497] + "..."
-
         st.code(tag_string, language="text")
         st.text_input("Copy Tag", tag_string)
+
+        # download excel
+        st.subheader("⬇️ Download Data")
+        df = pd.DataFrame(data_excel)
+        st.download_button(
+            label="Download Excel",
+            data=df.to_excel(index=False, engine="openpyxl"),
+            file_name="youtube_riset.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
