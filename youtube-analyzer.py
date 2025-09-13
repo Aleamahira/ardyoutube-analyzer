@@ -2,12 +2,32 @@ import streamlit as st
 import requests
 import pandas as pd
 from datetime import datetime, timezone
-from collections import Counter
-import re
 
 # ================== CONFIG ==================
 st.set_page_config(page_title="YouTube Trending Explorer", layout="wide")
 st.title("🎬 YouTube Trending Explorer")
+
+# ================== YOUTUBE REGION LIST ==================
+YOUTUBE_REGIONS = {
+    "Global (US default)": "US",
+    "Argentina": "AR","Australia": "AU","Austria": "AT","Bahrain": "BH","Bangladesh": "BD","Belgium": "BE",
+    "Bolivia": "BO","Bosnia and Herzegovina": "BA","Brazil": "BR","Bulgaria": "BG","Canada": "CA","Chile": "CL",
+    "Colombia": "CO","Costa Rica": "CR","Croatia": "HR","Cyprus": "CY","Czech Republic": "CZ","Denmark": "DK",
+    "Dominican Republic": "DO","Ecuador": "EC","Egypt": "EG","El Salvador": "SV","Estonia": "EE","Finland": "FI",
+    "France": "FR","Germany": "DE","Greece": "GR","Guatemala": "GT","Honduras": "HN","Hong Kong": "HK",
+    "Hungary": "HU","Iceland": "IS","India": "IN","Indonesia": "ID","Iraq": "IQ","Ireland": "IE","Israel": "IL",
+    "Italy": "IT","Jamaica": "JM","Japan": "JP","Jordan": "JO","Kenya": "KE","Kuwait": "KW","Latvia": "LV",
+    "Lebanon": "LB","Libya": "LY","Liechtenstein": "LI","Lithuania": "LT","Luxembourg": "LU","Malaysia": "MY",
+    "Malta": "MT","Mexico": "MX","Montenegro": "ME","Morocco": "MA","Nepal": "NP","Netherlands": "NL",
+    "New Zealand": "NZ","Nicaragua": "NI","Nigeria": "NG","North Macedonia": "MK","Norway": "NO","Oman": "OM",
+    "Pakistan": "PK","Panama": "PA","Paraguay": "PY","Peru": "PE","Philippines": "PH","Poland": "PL",
+    "Portugal": "PT","Puerto Rico": "PR","Qatar": "QA","Romania": "RO","Russia": "RU","Saudi Arabia": "SA",
+    "Senegal": "SN","Serbia": "RS","Singapore": "SG","Slovakia": "SK","Slovenia": "SI","South Africa": "ZA",
+    "South Korea": "KR","Spain": "ES","Sri Lanka": "LK","Sweden": "SE","Switzerland": "CH","Taiwan": "TW",
+    "Tanzania": "TZ","Thailand": "TH","Tunisia": "TN","Turkey": "TR","Uganda": "UG","Ukraine": "UA",
+    "United Arab Emirates": "AE","United Kingdom": "GB","United States": "US","Uruguay": "UY","Venezuela": "VE",
+    "Vietnam": "VN","Zimbabwe": "ZW"
+}
 
 # ================== SIDEBAR ==================
 if "api_key" not in st.session_state:
@@ -16,8 +36,9 @@ if "api_key" not in st.session_state:
 with st.sidebar:
     st.header("⚙️ Pengaturan")
     api_key = st.text_input("YouTube Data API Key", st.session_state.api_key, type="password")
-    max_per_order = st.slider("Jumlah per kategori (relevance/date/viewCount)", 5, 30, 15, 1)
-    region = st.text_input("Kode Negara (mis. US, ID, ALL)", "US")
+    max_per_order = st.slider("Jumlah video per kategori", 5, 30, 15, 1)
+    region_name = st.selectbox("Pilih Negara (regionCode)", list(YOUTUBE_REGIONS.keys()))
+    region = YOUTUBE_REGIONS[region_name]
     if st.button("Simpan"):
         st.session_state.api_key = api_key
         st.success("API Key berhasil disimpan!")
@@ -33,27 +54,14 @@ with st.form("youtube_form"):
     submit = st.form_submit_button("🔍 Cari Video")
 
 # ================== UTILITIES ==================
-STOPWORDS = set("a an and the for of to in on with from by at as or & | - live official lyrics video music mix hour hours relax relaxing study sleep deep best new latest".split())
-
-def iso8601_to_seconds(duration: str) -> int:
-    m = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", duration or "")
-    if not m: return 0
-    h, mi, s = (int(m.group(1) or 0), int(m.group(2) or 0), int(m.group(3) or 0))
-    return h*3600 + mi*60 + s
-
-def fmt_duration(sec: int) -> str:
-    if sec <= 0: return "-"
-    h, m, s = sec//3600, (sec%3600)//60, sec%60
-    return f"{h}:{m:02d}:{s:02d}" if h>0 else f"{m}:{s:02d}"
-
 def hitung_vph(views, publishedAt):
     try:
-        published_time = datetime.strptime(publishedAt, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        published_time = datetime.strptime(publishedAt,"%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
     except: return 0.0
-    hours = (datetime.now(timezone.utc) - published_time).total_seconds()/3600
+    hours=(datetime.now(timezone.utc)-published_time).total_seconds()/3600
     return round(views/hours,2) if hours>0 else 0.0
 
-def format_views(n: int) -> str:
+def format_views(n):
     try: n=int(n)
     except: return str(n)
     if n>=1_000_000: return f"{n/1_000_000:.1f}M"
@@ -74,13 +82,7 @@ def format_jam_utc(publishedAt):
     except: return "-"
 
 # ================== API ==================
-SEARCH_URL="https://www.googleapis.com/youtube/v3/search"
 VIDEOS_URL="https://www.googleapis.com/youtube/v3/videos"
-
-def yt_search_ids(api_key, query, order, max_results):
-    params={"part":"snippet","q":query,"type":"video","order":order,"maxResults":max_results,"key":api_key}
-    r=requests.get(SEARCH_URL,params=params).json()
-    return [it["id"]["videoId"] for it in r.get("items",[]) if it.get("id",{}).get("videoId")]
 
 def yt_videos_detail(api_key, ids:list):
     if not ids: return []
@@ -88,50 +90,36 @@ def yt_videos_detail(api_key, ids:list):
     r=requests.get(VIDEOS_URL,params=params).json()
     out=[]
     for it in r.get("items",[]):
-        stats,snip,det=it.get("statistics",{}),it.get("snippet",{}),it.get("contentDetails",{})
+        stats,snip=it.get("statistics",{}),it.get("snippet",{})
         views=int(stats.get("viewCount",0)) if stats.get("viewCount") else 0
-        dur_s=iso8601_to_seconds(det.get("duration",""))
         rec={"id":it.get("id"),"title":snip.get("title",""),"channel":snip.get("channelTitle",""),
              "publishedAt":snip.get("publishedAt",""),"views":views,
-             "thumbnail":(snip.get("thumbnails",{}).get("high") or snip.get("thumbnails",{}).get("default") or {}).get("url",""),
-             "duration_sec":dur_s,"duration":fmt_duration(dur_s)}
+             "thumbnail":(snip.get("thumbnails",{}).get("high") or {}).get("url","")}
         rec["vph"]=hitung_vph(rec["views"],rec["publishedAt"])
         out.append(rec)
     return out
 
-def get_combined_videos(api_key, query, max_per_order=15):
-    orders=["relevance","viewCount","date"]
-    all_ids=[]
-    for od in orders: all_ids+=yt_search_ids(api_key,query,od,max_per_order)
-    uniq_ids=list(dict.fromkeys(all_ids))
-    return yt_videos_detail(api_key,uniq_ids)
-
 def get_trending(api_key, region="US", max_results=15):
-    params={"part":"snippet,statistics,contentDetails","chart":"mostPopular","regionCode":region,"maxResults":max_results,"key":api_key}
+    params={"part":"snippet,statistics","chart":"mostPopular","regionCode":region,"maxResults":max_results,"key":api_key}
     r=requests.get(VIDEOS_URL,params=params).json()
     return yt_videos_detail(api_key,[it["id"] for it in r.get("items",[])])
 
 # ================== MAIN ==================
 if submit:
     if not keyword.strip():
-        st.info("📈 Menampilkan video trending (YouTube Most Popular)")
+        st.info(f"📈 Menampilkan video trending di {region_name}")
         videos_all=get_trending(st.session_state.api_key, region=region, max_results=max_per_order)
     else:
-        st.info("🔎 Riset video berdasarkan kata kunci & gabungan Relevan/Views/Terbaru")
-        videos_all=get_combined_videos(st.session_state.api_key, keyword, max_per_order=max_per_order)
-
-    videos_sorted=videos_all if sort_option=="Paling Relevan" else (
-        sorted(videos_all,key=lambda x:x["views"],reverse=True) if sort_option=="Paling Banyak Ditonton" else
-        sorted(videos_all,key=lambda x:x["publishedAt"],reverse=True) if sort_option=="Terbaru" else
-        sorted(videos_all,key=lambda x:x["vph"],reverse=True))
+        st.warning("🔎 Mode riset keyword belum diaktifkan di snippet ini.")
+        videos_all=[]
 
     if not videos_all:
         st.error("❌ Tidak ada video ditemukan")
     else:
         st.success(f"{len(videos_all)} video ditemukan")
         cols=st.columns(3)
-        all_titles=[]; rows_for_csv=[]
-        for i,v in enumerate(videos_sorted):
+        rows_for_csv=[]
+        for i,v in enumerate(videos_all):
             with cols[i%3]:
                 if v["thumbnail"]: st.image(v["thumbnail"])
                 st.markdown(f"**[{v['title']}]({'https://www.youtube.com/watch?v='+v['id']})**")
@@ -140,18 +128,16 @@ if submit:
                 with c1: st.markdown(f"<div style='background:#ff4b4b;color:white;padding:4px 8px;border-radius:6px;display:inline-block'>👁 {format_views(v['views'])} views</div>",unsafe_allow_html=True)
                 with c2: st.markdown(f"<div style='background:#4b8bff;color:white;padding:4px 8px;border-radius:6px;display:inline-block'>⚡ {v['vph']} VPH</div>",unsafe_allow_html=True)
                 with c3: st.markdown(f"<div style='background:#4caf50;color:white;padding:4px 8px;border-radius:6px;display:inline-block'>⏱ {format_rel_time(v['publishedAt'])}</div>",unsafe_allow_html=True)
-                st.caption(f"📅 {format_jam_utc(v['publishedAt'])} • ⏳ {v.get('duration','-')}")
-            all_titles.append(v["title"])
+                st.caption(f"📅 {format_jam_utc(v['publishedAt'])}")
             rows_for_csv.append({
-                "Judul": v["title"], "Panjang Judul": len(v["title"]),
-                "Channel": v["channel"], "Views": v["views"], "VPH": v["vph"],
+                "Judul": v["title"], "Channel": v["channel"],
+                "Views": v["views"], "VPH": v["vph"],
                 "Tanggal (relatif)": format_rel_time(v["publishedAt"]),
                 "Jam Publish (UTC)": format_jam_utc(v["publishedAt"]),
-                "Durasi": v.get("duration","-"),
                 "Link": f"https://www.youtube.com/watch?v={v['id']}"
             })
         # download csv
         st.subheader("⬇️ Download Data")
         df=pd.DataFrame(rows_for_csv)
         csv_data=df.to_csv(index=False).encode("utf-8")
-        st.download_button("Download CSV",data=csv_data,file_name="youtube_riset.csv",mime="text/csv")
+        st.download_button("Download CSV",data=csv_data,file_name="youtube_trending.csv",mime="text/csv")
