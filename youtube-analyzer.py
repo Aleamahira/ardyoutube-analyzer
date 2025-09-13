@@ -7,10 +7,12 @@ from collections import Counter
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 from langdetect import detect
+from pytrends.request import TrendReq
+import seaborn as sns
 
 st.set_page_config(page_title="YouTube Analyzer", layout="wide")
 
-st.title("📊 YouTube Analyzer - VPH & SEO Title Generator")
+st.title("📊 YouTube Analyzer - VPH & SEO Title Generator + Trends + Heatmap")
 
 # Input API Key manual
 api_key = st.text_input("🔑 Masukkan YouTube API Key", type="password")
@@ -123,7 +125,6 @@ if st.button("🔍 Analisis Video"):
             if len(new_title) < avg_len-10:
                 new_title += " Music Relaxation"
             seo_titles.append(new_title)
-
         for idx,title in enumerate(seo_titles,1):
             st.write(f"{idx}. {title}")
 
@@ -167,6 +168,53 @@ if st.button("🔍 Analisis Video"):
             for lang, count in top_lang:
                 negara = lang_map.get(lang, "Unknown")
                 st.write(f"- {negara} (detected: {lang}) → {count} judul")
+
+        # --- Trend Detector (Google Trends)
+        st.subheader("📊 Trend Detector (Google Trends)")
+        try:
+            pytrends = TrendReq(hl='en-US', tz=360)
+            kw_list = [query]
+            geo = region if region != "ALL" else ""
+            pytrends.build_payload(kw_list, cat=0, timeframe='today 3-m', geo=geo, gprop='')
+            trend_data = pytrends.interest_over_time()
+            if not trend_data.empty:
+                st.line_chart(trend_data[query])
+            else:
+                st.info("Tidak ada data tren untuk keyword ini.")
+        except Exception as e:
+            st.warning(f"Gagal ambil data tren: {e}")
+
+        # --- Heatmap Jam/Hari Upload
+        st.subheader("🕒 Best Time to Upload (Heatmap)")
+        df["Publish Datetime"] = pd.to_datetime(df["Publish Time"])
+        df["Hour"] = df["Publish Datetime"].dt.hour
+        df["Day"] = df["Publish Datetime"].dt.day_name()
+
+        heatmap_data = df.pivot_table(index="Day", columns="Hour", values="Judul", aggfunc="count").fillna(0)
+        plt.figure(figsize=(12,6))
+        sns.heatmap(heatmap_data, cmap="YlOrRd", linewidths=0.5, annot=True, fmt=".0f")
+        plt.title("Distribusi Upload Video (Jam vs Hari)")
+        st.pyplot(plt)
+
+        # --- Video Performance Segmentation (Top 10%)
+        st.subheader("🔥 Video Performance Segmentation (Top 10% VPH)")
+        threshold = df["VPH"].quantile(0.9)  # ambil top 10%
+        top_videos = df[df["VPH"] >= threshold]
+        st.write(f"Menampilkan {len(top_videos)} video dengan VPH di atas {threshold:.2f}")
+        st.dataframe(top_videos[["Judul","Channel","Views","VPH","Publish Time"]])
+
+        all_top_tags = []
+        for title in top_videos["Judul"].tolist():
+            all_top_tags.extend(title.split())
+        unique_top_tags = list(set([t for t in all_top_tags if len(t) > 3]))
+
+        st.subheader("📝 Rekomendasi Judul dari Video Top 10%")
+        seo_titles_top = []
+        for i in range(5):
+            selected = random.sample(unique_top_tags, min(6,len(unique_top_tags)))
+            seo_titles_top.append(" ".join(selected).title())
+        for idx,title in enumerate(seo_titles_top,1):
+            st.write(f"{idx}. {title}")
 
         # --- Export CSV
         st.download_button("⬇️ Download CSV", df.to_csv(index=False), file_name="youtube_vph_data.csv", mime="text/csv")
