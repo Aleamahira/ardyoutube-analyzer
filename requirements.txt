@@ -4,3 +4,6 @@ requests
 wordcloud
 matplotlib
 langdetect
+pillow
+numpy
+xlsxwriter
