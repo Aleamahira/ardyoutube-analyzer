@@ -22,7 +22,7 @@ st.title("📊 YouTube Analyzer By Ardhan - Judul & Tag Rekomendasi")
 
 # === Fungsi Copy ke Clipboard via JS ===
 def copy_to_clipboard(text, key):
-    safe_text = text.replace('"', '\\"')
+    safe_text = str(text).replace('"', '\\"')
     js_code = f"""
     <script>
     function copyText{key}() {{
@@ -105,11 +105,14 @@ if st.button("🔍 Analisis Video"):
         st.error("⚠️ Masukkan keyword niche!")
     else:
         items = search_videos(query, total_results=max_fetch)
+        st.info(f"🎯 Hasil search awal: {len(items)} video")
+
         if not items:
             st.warning("⚠️ Tidak ada hasil dari API.")
         else:
             video_ids = [it.get("id", {}).get("videoId") for it in items if it.get("id", {}).get("videoId")]
             details = get_video_stats(video_ids)
+            st.info(f"📥 Detail video berhasil diambil: {len(details)}")
 
             data = []
             for v in details:
@@ -121,45 +124,56 @@ if st.button("🔍 Analisis Video"):
 
                     title = snip.get("title", "")
                     channel = snip.get("channelTitle", "")
-                    views = int(stats.get("viewCount", 0))
+                    views = int(stats.get("viewCount", 0)) if "viewCount" in stats else 0
                     published = snip.get("publishedAt", None)
                     duration = content.get("duration")
 
                     if not published:
                         continue
 
-                    # Abaikan Shorts
-                    if is_shorts(duration):
-                        continue
-
                     published_time = datetime.strptime(published, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
                     age_hours = (datetime.now(timezone.utc) - published_time).total_seconds() / 3600
                     vph = round(views / age_hours, 2) if age_hours > 0 else 0
 
-                    data.append([
-                        title, channel, views, vph, len(title),
-                        published_time, f"https://www.youtube.com/watch?v={vid}"
-                    ])
+                    # Filter Shorts → hanya simpan Reguler & Live
+                    if not is_shorts(duration):
+                        data.append([
+                            title, channel, views, vph, len(title),
+                            published_time, f"https://www.youtube.com/watch?v={vid}"
+                        ])
                 except Exception:
                     continue
 
             if not data:
-                st.warning("⚠️ Tidak ada video valid.")
+                st.warning("⚠️ Semua video terfilter. Menampilkan data mentah sebagai fallback.")
+                data = [[
+                    v.get("snippet", {}).get("title","-"),
+                    v.get("snippet", {}).get("channelTitle","-"),
+                    v.get("statistics",{}).get("viewCount","-"),
+                    0,
+                    len(v.get("snippet", {}).get("title","")),
+                    v.get("snippet", {}).get("publishedAt","-"),
+                    f"https://www.youtube.com/watch?v={v['id']}"
+                ] for v in details]
+
+            df = pd.DataFrame(data, columns=[
+                "Judul","Channel","Views","VPH","Panjang Judul","Publish Datetime","Video Link"
+            ])
+            st.info(f"✅ Video valid setelah filter: {len(df)}")
+
+            # 1) Views tertinggi → filter 9 bulan terakhir
+            cutoff = datetime.now(timezone.utc) - timedelta(days=270)
+            df_views = df[df["Publish Datetime"] >= cutoff].sort_values(by="Views", ascending=False).head(10)
+
+            # 2) VPH tertinggi → tanpa batas waktu
+            df_vph = df.sort_values(by="VPH", ascending=False).head(10)
+
+            # 3) Gabungkan
+            combined = pd.concat([df_views, df_vph]).drop_duplicates().reset_index(drop=True)
+
+            if combined.empty:
+                st.warning("⚠️ Tidak ada kombinasi video untuk rekomendasi judul.")
             else:
-                df = pd.DataFrame(data, columns=[
-                    "Judul","Channel","Views","VPH","Panjang Judul","Publish Datetime","Video Link"
-                ])
-
-                # 1) Views tertinggi → filter 9 bulan terakhir
-                cutoff = datetime.now(timezone.utc) - timedelta(days=270)
-                df_views = df[df["Publish Datetime"] >= cutoff].sort_values(by="Views", ascending=False).head(10)
-
-                # 2) VPH tertinggi → tanpa batas waktu
-                df_vph = df.sort_values(by="VPH", ascending=False).head(10)
-
-                # 3) Gabungkan
-                combined = pd.concat([df_views, df_vph]).drop_duplicates().reset_index(drop=True)
-
                 # 4) Buat rekomendasi judul baru
                 avg_len = int(combined["Panjang Judul"].mean()) if not combined.empty else 60
                 words = " ".join(combined["Judul"].tolist()).split()
@@ -173,7 +187,7 @@ if st.button("🔍 Analisis Video"):
                         new_title += " Music Relaxation"
                     rekom.append(new_title)
 
-                st.markdown('<p class="big-title">📝 Rekomendasi Judul (Gabungan Views & VPH)</p>', unsafe_allow_html=True)
+                st.markdown('<p class="big-title">📝 Rekomendasi Judul</p>', unsafe_allow_html=True)
                 st.write(f"📏 Rata-rata panjang judul kompetitor: **{avg_len} karakter**")
 
                 for i, title in enumerate(rekom, 1):
