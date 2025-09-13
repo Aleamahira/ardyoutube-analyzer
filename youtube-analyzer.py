@@ -117,17 +117,21 @@ def yt_videos_detail(api_key, ids:list):
         out.append(rec)
     return out
 
-def get_combined_videos(api_key, query, max_per_order=15, video_type="all"):
-    orders=["relevance","viewCount","date"]
-    all_ids=[]
-    for od in orders: all_ids+=yt_search_ids(api_key,query,od,max_per_order,video_type)
-    uniq_ids=list(dict.fromkeys(all_ids))
-    return yt_videos_detail(api_key,uniq_ids)
-
 def get_trending(api_key, region="US", max_results=15):
     params={"part":"snippet,statistics,contentDetails","chart":"mostPopular","regionCode":region,"maxResults":max_results,"key":api_key}
     r=requests.get(VIDEOS_URL,params=params).json()
     return yt_videos_detail(api_key,[it["id"] for it in r.get("items",[])])
+
+# ================== Sort Option Mapper ==================
+def map_sort_option(sort_option: str):
+    if sort_option == "Paling Banyak Ditonton":
+        return "viewCount"
+    elif sort_option == "Terbaru":
+        return "date"
+    elif sort_option == "VPH Tertinggi":
+        return "date"  # ambil by date, nanti sort manual
+    else:
+        return "relevance"
 
 # ================== Judul Generator ==================
 def top_keywords_from_titles(titles, topk=8):
@@ -183,7 +187,11 @@ if submit:
     else:
         st.info(f"🔎 Riset keyword: {keyword}")
         vtype_map={"Semua":"all","Regular":"regular","Short":"short","Live":"live"}
-        videos_all=get_combined_videos(st.session_state.api_key,keyword,max_per_order,vtype_map[video_type])
+        order=map_sort_option(sort_option)
+        ids=yt_search_ids(st.session_state.api_key,keyword,order,max_per_order,vtype_map[video_type])
+        videos_all=yt_videos_detail(st.session_state.api_key,ids)
+        if sort_option=="VPH Tertinggi":
+            videos_all=sorted(videos_all,key=lambda x:x["vph"],reverse=True)
 
     if not videos_all:
         st.error("❌ Tidak ada video ditemukan")
