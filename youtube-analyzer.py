@@ -23,7 +23,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("📊 YouTube Analyzer By Ardhan")
+st.title("📊 YouTube Analyzer By Ardhan - ATM Edition (All-in-One)")
 
 # === Input API Key YouTube ===
 api_key = st.text_input("🔑 Masukkan YouTube API Key", type="password")
@@ -129,10 +129,11 @@ if st.button("🔍 Analisis Video"):
             all_tags.extend(tags)
             all_tags.extend(title.split())
 
+            # Simpan 2 versi: string (untuk display) & datetime (untuk filter)
             data.append([
                 title, channel, views, vph, len(title),
-                published_time.strftime("%Y-%m-%d %H:%M"),
-                published_time,
+                published_time.strftime("%Y-%m-%d %H:%M"),   # untuk tampilan
+                published_time,                              # datetime asli
                 thumb, f"https://img.youtube.com/vi/{vid}/maxresdefault.jpg",
                 f"https://www.youtube.com/watch?v={vid}"
             ])
@@ -141,6 +142,9 @@ if st.button("🔍 Analisis Video"):
             "Judul","Channel","Views","VPH","Panjang Judul","Publish Time","Publish Datetime",
             "Thumbnail","Download Link","Video Link"
         ])
+
+        # Pastikan Publish Datetime benar2 datetime
+        df["Publish Datetime"] = pd.to_datetime(df["Publish Datetime"], errors="coerce")
 
         # === Filter Berdasarkan Rentang Waktu ===
         if time_limit:
