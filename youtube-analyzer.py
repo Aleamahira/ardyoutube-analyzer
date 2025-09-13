@@ -13,7 +13,17 @@ import seaborn as sns
 # === Konfigurasi Awal ===
 st.set_page_config(page_title="YouTube Analyzer By Ardhan", layout="wide")
 
-st.title("📊 YouTube Analyzer (By Ardhan)")
+# CSS untuk perbesar tulisan
+st.markdown("""
+    <style>
+    h1 {font-size: 38px !important;}
+    h2, h3, h4 {font-size: 26px !important;}
+    p, li, div, span {font-size: 18px !important;}
+    .stDataFrame, .stMarkdown, .stTable {font-size: 18px !important;}
+    </style>
+""", unsafe_allow_html=True)
+
+st.title("📊 YouTube Analyzer By Ardhan - ATM Edition (All-in-One)")
 
 # === Input API Key YouTube ===
 api_key = st.text_input("🔑 Masukkan YouTube API Key", type="password")
@@ -32,7 +42,7 @@ if st.button("📥 Ambil API Key YouTube"):
     """)
 
 # === Input Query ===
-query = st.text_input("🎯 Masukkan niche/keyword (contoh: Music)")
+query = st.text_input("🎯 Masukkan niche/keyword (contoh: Healing Flute)")
 region = st.selectbox("🌍 Negara Target", ["ALL","US","ID","JP","BR","IN","DE","GB","FR","ES"])
 video_type = st.selectbox("🎥 Jenis Video", ["Semua","Reguler","Shorts","Live"])
 max_results = st.slider("Jumlah video yang dianalisis", 5, 50, 20)
@@ -114,13 +124,13 @@ if st.button("🔍 Analisis Video"):
 
         # === Hasil Utama ===
         st.subheader("📈 Hasil Analisis Video")
-        st.dataframe(df[["Judul","Channel","Views","VPH","Panjang Judul","Publish Time"]])
+        st.dataframe(df[["Judul","Channel","Views","VPH","Panjang Judul","Publish Time"]], use_container_width=True)
 
         # === Preview Thumbnail ===
         st.subheader("🖼️ Preview Thumbnail & Link Video")
         for i, row in df.iterrows():
             st.markdown(f"### ▶️ [{row['Judul']}]({row['Video Link']})")
-            st.image(row["Thumbnail"], width=300, caption=f"VPH: {row['VPH']}")
+            st.image(row["Thumbnail"], width=400, caption=f"VPH: {row['VPH']}")
             st.markdown(f"[📥 Download Thumbnail]({row['Download Link']})")
 
         # === Panjang Judul ===
@@ -153,8 +163,8 @@ if st.button("🔍 Analisis Video"):
         st.subheader("☁️ Word Cloud dari Judul & Tag")
         text_blob = " ".join(all_tags)
         if text_blob.strip():
-            wc = WordCloud(width=800, height=400, background_color="white").generate(text_blob)
-            fig, ax = plt.subplots(figsize=(10,5))
+            wc = WordCloud(width=900, height=500, background_color="white").generate(text_blob)
+            fig, ax = plt.subplots(figsize=(12,6))
             ax.imshow(wc, interpolation="bilinear")
             ax.axis("off")
             st.pyplot(fig)
@@ -167,7 +177,7 @@ if st.button("🔍 Analisis Video"):
             "Judul":"count"
         }).reset_index().rename(columns={"Judul":"Jumlah Video"})
         channel_stats["Authority Score"] = round(channel_stats["VPH"] * channel_stats["Jumlah Video"],2)
-        st.dataframe(channel_stats)
+        st.dataframe(channel_stats, use_container_width=True)
 
         # === Heatmap Upload Time (User Friendly) ===
         st.subheader("🕒 Best Time to Upload (Heatmap)")
@@ -187,7 +197,7 @@ if st.button("🔍 Analisis Video"):
             aggfunc="count"
         ).fillna(0)
 
-        plt.figure(figsize=(14,6))
+        plt.figure(figsize=(16,7))
         sns.heatmap(
             heatmap_data,
             cmap="YlGnBu",
@@ -196,9 +206,9 @@ if st.button("🔍 Analisis Video"):
             fmt=".0f",
             cbar_kws={'label': 'Jumlah Video Diupload'}
         )
-        plt.title("📊 Waktu Upload Populer (Hari vs Jam)", fontsize=14, pad=20)
-        plt.xlabel("Jam (0 = Tengah Malam, 23 = 11 Malam)")
-        plt.ylabel("Hari")
+        plt.title("📊 Waktu Upload Populer (Hari vs Jam)", fontsize=18, pad=20)
+        plt.xlabel("Jam (0 = Tengah Malam, 23 = 11 Malam)", fontsize=14)
+        plt.ylabel("Hari", fontsize=14)
         st.pyplot(plt)
 
         # Tambahan keterangan untuk pemula
@@ -218,7 +228,7 @@ if st.button("🔍 Analisis Video"):
         threshold = df["VPH"].quantile(0.9)
         top_videos = df[df["VPH"] >= threshold]
         st.write(f"Menampilkan {len(top_videos)} video dengan VPH di atas {threshold:.2f}")
-        st.dataframe(top_videos[["Judul","Channel","Views","VPH","Publish Time"]])
+        st.dataframe(top_videos[["Judul","Channel","Views","VPH","Publish Time"]], use_container_width=True)
 
         # Rekomendasi judul dari pola top 10%
         all_top_tags = []
