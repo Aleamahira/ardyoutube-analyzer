@@ -109,11 +109,18 @@ def yt_videos_detail(api_key, ids:list):
         snip,stats,det=it.get("snippet",{}),it.get("statistics",{}),it.get("contentDetails",{})
         views=int(stats.get("viewCount",0)) if stats.get("viewCount") else 0
         dur_s=iso8601_to_seconds(det.get("duration",""))
-        rec={"id":it.get("id"),"title":snip.get("title",""),"channel":snip.get("channelTitle",""),
-             "publishedAt":snip.get("publishedAt",""),"views":views,
-             "thumbnail":(snip.get("thumbnails",{}).get("high") or {}).get("url",""),
-             "duration_sec":dur_s,"duration":fmt_duration(dur_s)}
-        rec["vph"]=hitung_vph(rec["views"],rec["publishedAt"])
+        rec={
+            "id": it.get("id"),
+            "title": snip.get("title",""),
+            "channel": snip.get("channelTitle",""),
+            "publishedAt": snip.get("publishedAt",""),
+            "views": views,
+            "thumbnail": (snip.get("thumbnails",{}).get("high") or {}).get("url",""),
+            "duration_sec": dur_s,
+            "duration": fmt_duration(dur_s),
+            "live": snip.get("liveBroadcastContent","none")
+        }
+        rec["vph"]=hitung_vph(rec["views"], rec["publishedAt"])
         out.append(rec)
     return out
 
@@ -122,16 +129,34 @@ def get_trending(api_key, region="US", max_results=15):
     r=requests.get(VIDEOS_URL,params=params).json()
     return yt_videos_detail(api_key,[it["id"] for it in r.get("items",[])])
 
-# ================== Sort Option Mapper ==================
+# ================== Sort & Filter Helpers ==================
 def map_sort_option(sort_option: str):
     if sort_option == "Paling Banyak Ditonton":
         return "viewCount"
     elif sort_option == "Terbaru":
         return "date"
     elif sort_option == "VPH Tertinggi":
-        return "date"  # ambil by date, nanti sort manual
+        return "date"  # ambil by date, sort manual di client
     else:
         return "relevance"
+
+def apply_client_sort(items, sort_option: str):
+    if sort_option == "Paling Banyak Ditonton":
+        return sorted(items, key=lambda x: x.get("views", 0), reverse=True)
+    if sort_option == "Terbaru":
+        return sorted(items, key=lambda x: x.get("publishedAt", ""), reverse=True)
+    if sort_option == "VPH Tertinggi":
+        return sorted(items, key=lambda x: x.get("vph", 0.0), reverse=True)
+    return items
+
+def filter_by_video_type(items, video_type_label: str):
+    if video_type_label == "Short":
+        return [v for v in items if v.get("duration_sec", 0) <= 60]
+    if video_type_label == "Regular":
+        return [v for v in items if v.get("duration_sec", 0) > 60]
+    if video_type_label == "Live":
+        return [v for v in items if v.get("live", "none") == "live"]
+    return items
 
 # ================== Judul Generator ==================
 def top_keywords_from_titles(titles, topk=8):
@@ -164,15 +189,12 @@ def generate_titles_structured(keyword_main,videos,titles_all):
     k2=(topk[1] if len(topk)>1 else "Sleep").title()
     dur=derive_duration_phrase(videos)
     titles=[]
-    # Struktur 1
     titles.append(f"Eliminate Stress & Anxiety | {kw.title()} for Deep Relaxation and Inner Peace")
     titles.append(f"Heal Faster & Clear Mind | {kw.title()} Therapy for {k1} and {k2}")
     titles.append(f"Emotional Detox & Calm | {kw.title()} – Release Negativity, Find Balance")
-    # Struktur 2
     titles.append(f"{kw.title()} | Deep Calm and Healing Energy for Sleep & Meditation")
     titles.append(f"{kw.title()} | Stress Relief and Emotional Reset for Night Routine")
     titles.append(f"{kw.title()} | Gentle Sounds to Focus, Study and Inner Healing")
-    # Struktur 3
     titles.append(f"{dur} | {kw.title()} – Reduce Overthinking, Fall Asleep Fast")
     titles.append(f"{dur} Non-Stop | {kw.title()} – Relax Mind, Boost Serotonin")
     titles.append(f"10 Hours Loop | {kw.title()} – Deep Meditation and Emotional Balance")
@@ -190,8 +212,10 @@ if submit:
         order=map_sort_option(sort_option)
         ids=yt_search_ids(st.session_state.api_key,keyword,order,max_per_order,vtype_map[video_type])
         videos_all=yt_videos_detail(st.session_state.api_key,ids)
-        if sort_option=="VPH Tertinggi":
-            videos_all=sorted(videos_all,key=lambda x:x["vph"],reverse=True)
+
+    # Terapkan filter tipe video & sort manual di client
+    videos_all = filter_by_video_type(videos_all, video_type)
+    videos_all = apply_client_sort(videos_all, sort_option)
 
     if not videos_all:
         st.error("❌ Tidak ada video ditemukan")
