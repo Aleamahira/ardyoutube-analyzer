@@ -4,7 +4,6 @@ import pandas as pd
 from datetime import datetime, timezone, timedelta
 import random
 from collections import Counter
-import pyperclip
 
 # === Konfigurasi Awal ===
 st.set_page_config(page_title="YouTube Analyzer By Ardhan", layout="wide")
@@ -16,12 +15,26 @@ st.markdown("""
     p, li, div, span {font-size: 18px !important;}
     .stDataFrame, .stMarkdown, .stTable {font-size: 18px !important;}
     .big-title {font-size: 30px !important; font-weight: 700; color: #d32f2f; margin-top: 8px;}
-    .copy-btn {background:#e0f2fe; padding:6px 12px; border-radius:8px; border:1px solid #38bdf8; cursor:pointer; font-size:15px;}
-    .pill {display:inline-block; padding:6px 10px; border-radius:999px; background:#f1f5f9; border:1px solid #cbd5e1; margin:3px; font-size:15px;}
     </style>
 """, unsafe_allow_html=True)
 
 st.title("📊 YouTube Analyzer By Ardhan - Judul & Tag Rekomendasi")
+
+# === Fungsi Copy ke Clipboard via JS ===
+def copy_to_clipboard(text, key):
+    safe_text = text.replace('"', '\\"')
+    js_code = f"""
+    <script>
+    function copyText{key}() {{
+        navigator.clipboard.writeText("{safe_text}");
+        alert("📋 '{safe_text[:40]}...' berhasil disalin!");
+    }}
+    </script>
+    <button onclick="copyText{key}()" style="background:#e0f2fe;padding:6px 12px;border-radius:8px;border:1px solid #38bdf8;cursor:pointer;font-size:15px;margin-bottom:6px;">
+        📋 Salin
+    </button>
+    """
+    st.markdown(js_code, unsafe_allow_html=True)
 
 # === Input API Key YouTube ===
 api_key = st.text_input("🔑 Masukkan YouTube API Key", type="password")
@@ -164,13 +177,8 @@ if st.button("🔍 Analisis Video"):
                 st.write(f"📏 Rata-rata panjang judul kompetitor: **{avg_len} karakter**")
 
                 for i, title in enumerate(rekom, 1):
-                    col1, col2 = st.columns([6,1])
-                    with col1:
-                        st.markdown(f"**{i}. {title}**")
-                    with col2:
-                        if st.button("📋 Salin", key=f"copy_title_{i}"):
-                            pyperclip.copy(title)
-                            st.success(f"Judul {i} berhasil disalin!")
+                    st.markdown(f"**{i}. {title}**")
+                    copy_to_clipboard(title, f"title{i}")
 
                 # 5) Tag relevan
                 st.markdown('<p class="big-title">🏷️ Tag Rekomendasi</p>', unsafe_allow_html=True)
@@ -181,18 +189,12 @@ if st.button("🔍 Analisis Video"):
                 if top_tags:
                     # Tampilkan tag per item
                     for i, tag in enumerate(top_tags, 1):
-                        col1, col2 = st.columns([6,1])
-                        with col1:
-                            st.markdown(f"- {tag}")
-                        with col2:
-                            if st.button("📋 Salin", key=f"copy_tag_{i}"):
-                                pyperclip.copy(tag)
-                                st.success(f"Tag '{tag}' berhasil disalin!")
+                        st.markdown(f"- {tag}")
+                        copy_to_clipboard(tag, f"tag{i}")
 
                     # Tombol salin semua tag sekaligus
                     all_tags_str = ", ".join(top_tags)
-                    if st.button("📋 Salin Semua Tag"):
-                        pyperclip.copy(all_tags_str)
-                        st.success("✅ Semua tag berhasil disalin ke clipboard!")
+                    st.markdown("### 📋 Salin Semua Tag")
+                    copy_to_clipboard(all_tags_str, "alltags")
                 else:
                     st.info("Belum ada tag relevan yang bisa ditampilkan.")
