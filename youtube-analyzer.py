@@ -99,15 +99,6 @@ def urutkan_video(data, mode):
     else:
         return data
 
-# === Generator Judul Otomatis (>=66 karakter) ===
-def buat_judul(keyword):
-    templates = [
-        f"Heal Your Soul Fast | {keyword.title()} for Stress Relief and Inner Calm",
-        f"{keyword.title()} | Deep Relaxation Music for Sleep, Healing and Peace",
-        f"3 Hours of {keyword.title()} – Release Negativity, Stress and Toxins"
-    ]
-    return [j for j in templates if len(j) >= 66]
-
 # === Jalankan ===
 if submit:
     with st.spinner("Mengambil data dari YouTube..."):
@@ -146,12 +137,6 @@ if submit:
                 "Link": f"https://www.youtube.com/watch?v={v['id']}"
             })
 
-        # === Rekomendasi Judul ===
-        st.subheader("💡 Rekomendasi Judul Baru")
-        rekom = buat_judul(keyword)
-        for r in rekom:
-            st.text_input("Copy Judul", r)
-
         # === Auto Tag ===
         st.subheader("🏷️ Rekomendasi Tag (Max 500 karakter)")
         kata_unik = []
@@ -166,16 +151,14 @@ if submit:
         st.code(tag_string, language="text")
         st.text_input("Copy Tag", tag_string)
 
-        # === Download Excel ===
+        # === Download CSV ===
         st.subheader("⬇️ Download Data")
         df = pd.DataFrame(data_excel)
-        output = BytesIO()
-        df.to_excel(output, index=False, engine="openpyxl")
-        processed_data = output.getvalue()
+        csv_data = df.to_csv(index=False).encode("utf-8")
 
         st.download_button(
-            label="Download Excel",
-            data=processed_data,
-            file_name="youtube_riset.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            label="Download CSV",
+            data=csv_data,
+            file_name="youtube_riset.csv",
+            mime="text/csv"
         )
