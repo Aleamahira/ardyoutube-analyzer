@@ -10,7 +10,7 @@ st.title("📊 YouTube Analyzer - VPH & SEO Title Generator")
 
 # Input API Key manual
 api_key = st.text_input("🔑 Masukkan YouTube API Key", type="password")
-query = st.text_input("🎯 Masukkan niche/keyword (contoh: Healing Flute)")
+query = st.text_input("🎯 Masukkan niche/keyword (contoh: janda muda)")
 region = st.selectbox("🌍 Negara Target", ["ALL","US","ID","JP","BR","IN","DE","GB","FR","ES"])
 video_type = st.selectbox("🎥 Jenis Video", ["Semua","Reguler","Shorts","Live"])
 max_results = st.slider("Jumlah video yang dianalisis", 5, 50, 20)
