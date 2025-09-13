@@ -4,7 +4,5 @@ requests
 wordcloud
 matplotlib
 langdetect
-pillow
-numpy
-xlsxwriter
-isodate
+pytrends
+seaborn
