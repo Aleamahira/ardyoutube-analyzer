@@ -7,22 +7,16 @@ from collections import Counter
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 from langdetect import detect
-import numpy as np
-from PIL import Image
-import colorsys
-import io
-import isodate  # untuk parsing durasi video YouTube ISO8601
 
 st.set_page_config(page_title="YouTube Analyzer", layout="wide")
 
-st.title("📊 YouTube Analyzer - Competitor Research (Full Version)")
+st.title("📊 YouTube Analyzer - VPH & SEO Title Generator")
 
 # Input API Key manual
 api_key = st.text_input("🔑 Masukkan YouTube API Key", type="password")
-query = st.text_input("🎯 Masukkan niche/keyword (contoh: Slow Rock)")
+query = st.text_input("🎯 Masukkan niche/keyword (contoh: Healing Flute)")
 region = st.selectbox("🌍 Negara Target", ["ALL","US","ID","JP","BR","IN","DE","GB","FR","ES"])
 video_type = st.selectbox("🎥 Jenis Video", ["Semua","Reguler","Shorts","Live"])
-duration_filter = st.selectbox("⏱️ Durasi Video", ["Semua","Pendek (<5m)","Medium (5-20m)","Panjang (>20m)"])
 max_results = st.slider("Jumlah video yang dianalisis", 5, 50, 20)
 
 # API endpoints
@@ -46,28 +40,11 @@ def search_videos(query, max_results=10):
 
 def get_video_stats(video_ids):
     params = {
-        "part": "statistics,snippet,contentDetails",
+        "part": "statistics,snippet",
         "id": ",".join(video_ids),
         "key": api_key
     }
     return requests.get(YOUTUBE_VIDEO_URL, params=params).json().get("items", [])
-
-def parse_duration(duration):
-    """Konversi ISO8601 (PT#M#S) ke detik"""
-    try:
-        return int(isodate.parse_duration(duration).total_seconds())
-    except:
-        return 0
-
-def get_dominant_color(url):
-    try:
-        img = Image.open(requests.get(url, stream=True).raw).resize((50,50))
-        pixels = np.array(img).reshape(-1,3)
-        avg = pixels.mean(axis=0)
-        h, l, s = colorsys.rgb_to_hls(avg[0]/255, avg[1]/255, avg[2]/255)
-        return (round(h*360), round(s*100), round(l*100))
-    except:
-        return None
 
 # 🔍 Tombol Analisis
 if st.button("🔍 Analisis Video"):
@@ -80,100 +57,116 @@ if st.button("🔍 Analisis Video"):
         video_ids = [v["id"]["videoId"] for v in videos]
         video_details = get_video_stats(video_ids)
 
-        data, all_tags, title_lengths, publish_times = [], [], [], []
+        data = []
+        all_tags = []
+        title_lengths = []
 
         for v in video_details:
             vid = v["id"]
-            snippet = v.get("snippet", {})
-            stats = v.get("statistics", {})
-            details = v.get("contentDetails", {})
+            snippet = v["snippet"]
+            stats = v["statistics"]
 
-            title = snippet.get("title", "No Title")
-            channel = snippet.get("channelTitle", "Unknown Channel")
-            thumb = snippet.get("thumbnails", {}).get("high", {}).get("url", "")
+            title = snippet["title"]
+            channel = snippet["channelTitle"]
+            thumb = snippet["thumbnails"]["high"]["url"]
             views = int(stats.get("viewCount", 0))
-            published = snippet.get("publishedAt", datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ"))
-
-            # Durasi aman
-            duration_str = details.get("duration", "PT0S")
-            duration = parse_duration(duration_str)
-
-            if duration_filter == "Pendek (<5m)" and duration > 300: 
-                continue
-            if duration_filter == "Medium (5-20m)" and not (300 <= duration <= 1200): 
-                continue
-            if duration_filter == "Panjang (>20m)" and duration < 1200: 
-                continue
+            published = snippet["publishedAt"]
 
             # Hitung umur video (jam)
             published_time = datetime.strptime(published, "%Y-%m-%dT%H:%M:%SZ")
-            age_hours = (datetime.now(timezone.utc) - published_time.replace(tzinfo=timezone.utc)).total_seconds()/3600
+            age_hours = (datetime.now(timezone.utc) - published_time.replace(tzinfo=timezone.utc)).total_seconds() / 3600
             vph = round(views / age_hours, 2) if age_hours > 0 else 0
 
-            # Data tambahan
+            # Kumpulkan panjang judul
             title_lengths.append(len(title))
-            publish_times.append(published_time)
+
+            # Kumpulkan tags (jika ada)
             tags = snippet.get("tags", [])
             all_tags.extend(tags)
             all_tags.extend(title.split())
-
-            dom_color = get_dominant_color(thumb)
 
             data.append([
                 title, channel, views, vph, len(title),
                 published_time.strftime("%Y-%m-%d %H:%M"),
                 thumb, f"https://img.youtube.com/vi/{vid}/maxresdefault.jpg",
-                f"https://www.youtube.com/watch?v={vid}", duration, dom_color
+                f"https://www.youtube.com/watch?v={vid}"
             ])
 
-        df = pd.DataFrame(data, columns=[
-            "Judul","Channel","Views","VPH","Panjang Judul","Publish Time",
-            "Thumbnail","Download Link","Video Link","Durasi (s)","Dominant Color"
-        ])
+        df = pd.DataFrame(data, columns=["Judul","Channel","Views","VPH","Panjang Judul","Publish Time","Thumbnail","Download Link","Video Link"])
         df = df.sort_values(by="VPH", ascending=False)
 
-        # --- Data Channel Authority
-        channel_stats = df.groupby("Channel").agg({
-            "Views":"sum",
-            "VPH":"mean",
-            "Judul":"count"
-        }).reset_index().rename(columns={"Judul":"Jumlah Video"})
-        channel_stats["Authority Score"] = round(channel_stats["VPH"] * channel_stats["Jumlah Video"],2)
+        # --- Hasil utama
+        st.subheader("📈 Hasil Analisis Video")
+        st.dataframe(df[["Judul","Channel","Views","VPH","Panjang Judul","Publish Time"]])
+
+        # --- Thumbnail + Link Video
+        st.subheader("🖼️ Preview Thumbnail & Link Video")
+        for i, row in df.iterrows():
+            st.markdown(f"### ▶️ [{row['Judul']}]({row['Video Link']})")
+            st.image(row["Thumbnail"], width=300, caption=f"VPH: {row['VPH']}")
+            st.markdown(f"[📥 Download Thumbnail]({row['Download Link']})")
+
+        # --- Analisis panjang judul
+        st.subheader("📏 Analisis Panjang Judul")
+        avg_len = round(sum(title_lengths)/len(title_lengths),2)
+        st.write(f"- Rata-rata panjang judul: **{avg_len} karakter**")
+        st.write(f"- Terpendek: {min(title_lengths)} | Terpanjang: {max(title_lengths)}")
+        st.write(f"- Rekomendasi: fokus di sekitar **{int(avg_len-5)}–{int(avg_len+10)} karakter**")
 
         # --- Rekomendasi Judul SEO-Friendly
-        avg_len = round(sum(title_lengths)/len(title_lengths),2) if title_lengths else 50
+        st.subheader("📝 Rekomendasi Judul SEO-Friendly")
         unique_tags = list(set([t for t in all_tags if len(t) > 3]))
         seo_titles = []
         for i in range(10):
-            if len(unique_tags) >= 6:
-                selected = random.sample(unique_tags, 6)
-            else:
-                selected = unique_tags
+            selected = random.sample(unique_tags, min(6,len(unique_tags)))
             new_title = " ".join(selected).title()
             if len(new_title) < avg_len-10:
                 new_title += " Music Relaxation"
             seo_titles.append(new_title)
 
+        for idx,title in enumerate(seo_titles,1):
+            st.write(f"{idx}. {title}")
+
         # --- Rekomendasi Tag
+        st.subheader("🏷️ Rekomendasi Tag")
         counter = Counter([t.lower() for t in all_tags if len(t) > 3])
         top_tags = [tag for tag,_ in counter.most_common(25)]
+        st.write(", ".join(top_tags))
+
+        # --- Word Cloud
+        st.subheader("☁️ Word Cloud dari Judul & Tag")
+        text_blob = " ".join(all_tags)
+        if text_blob.strip():
+            wc = WordCloud(width=800, height=400, background_color="white").generate(text_blob)
+            fig, ax = plt.subplots(figsize=(10,5))
+            ax.imshow(wc, interpolation="bilinear")
+            ax.axis("off")
+            st.pyplot(fig)
+
+        # --- Data Channel (proxy)
+        st.subheader("📺 Data Channel (Basic Info)")
+        channel_stats = df.groupby("Channel").agg({
+            "Views":"sum",
+            "VPH":"mean",
+            "Judul":"count"
+        }).reset_index().rename(columns={"Judul":"Jumlah Video"})
+        st.dataframe(channel_stats)
+
+        # --- Prediksi Negara Target (proxy)
+        st.subheader("🌍 Prediksi Target Negara (Proxy)")
+        lang_map = {"en":"US/Global","id":"Indonesia","es":"Spain/Latin America","de":"Germany","fr":"France","ja":"Japan"}
+        lang_detected = []
+        for t in df["Judul"].tolist():
+            try:
+                lang_detected.append(detect(t))
+            except:
+                continue
+        counter_lang = Counter(lang_detected)
+        top_lang = counter_lang.most_common(3)
+        if top_lang:
+            for lang, count in top_lang:
+                negara = lang_map.get(lang, "Unknown")
+                st.write(f"- {negara} (detected: {lang}) → {count} judul")
 
         # --- Export CSV
-        csv = df.to_csv(index=False, encoding="utf-8-sig")
-        st.download_button("⬇️ Download CSV", csv, file_name="youtube_vph_data.csv", mime="text/csv")
-
-        # --- Export Excel (.xlsx)
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-            df.to_excel(writer, index=False, sheet_name="Data Video")
-            channel_stats.to_excel(writer, index=False, sheet_name="Data Channel")
-            pd.DataFrame({"Rekomendasi Judul": seo_titles}).to_excel(writer, index=False, sheet_name="Rekomendasi Judul")
-            pd.DataFrame({"Rekomendasi Tag": top_tags}).to_excel(writer, index=False, sheet_name="Rekomendasi Tag")
-        excel_data = output.getvalue()
-
-        st.download_button(
-            label="⬇️ Download Excel (.xlsx)",
-            data=excel_data,
-            file_name="youtube_analysis.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        st.download_button("⬇️ Download CSV", df.to_csv(index=False), file_name="youtube_vph_data.csv", mime="text/csv")
