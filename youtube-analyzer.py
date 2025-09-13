@@ -13,13 +13,26 @@ import seaborn as sns
 # === Konfigurasi Awal ===
 st.set_page_config(page_title="YouTube Analyzer By Ardhan", layout="wide")
 
-st.title("📊 YouTube Analyzer By Ardhan - ATM Edition (All-in-One)")
+st.title("📊 YouTube Analyzer (By Ardhan)")
 
 # === Input API Key YouTube ===
 api_key = st.text_input("🔑 Masukkan YouTube API Key", type="password")
 
+# Tombol untuk ambil API Key
+if st.button("📥 Ambil API Key YouTube"):
+    st.markdown("""
+    👉 [Klik di sini untuk buat API Key YouTube](https://console.cloud.google.com/apis/credentials)  
+
+    **Langkah Singkat untuk Pemula:**  
+    1. Login ke [Google Cloud Console](https://console.cloud.google.com/) dengan akun Google.  
+    2. Buat **Project Baru** (misalnya: "YouTube Analyzer").  
+    3. Aktifkan **YouTube Data API v3** di menu Library.  
+    4. Buka menu **Credentials** → klik **Create API Key**.  
+    5. Copy API Key dan tempelkan di atas.  
+    """)
+
 # === Input Query ===
-query = st.text_input("🎯 Masukkan niche/keyword (contoh: Healing Flute)")
+query = st.text_input("🎯 Masukkan niche/keyword (contoh: Music)")
 region = st.selectbox("🌍 Negara Target", ["ALL","US","ID","JP","BR","IN","DE","GB","FR","ES"])
 video_type = st.selectbox("🎥 Jenis Video", ["Semua","Reguler","Shorts","Live"])
 max_results = st.slider("Jumlah video yang dianalisis", 5, 50, 20)
