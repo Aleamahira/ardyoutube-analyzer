@@ -9,30 +9,14 @@ import matplotlib.pyplot as plt
 from langdetect import detect
 from pytrends.request import TrendReq
 import seaborn as sns
-import google.generativeai as genai
 
 # === Konfigurasi Awal ===
 st.set_page_config(page_title="YouTube Analyzer By Ardhan", layout="wide")
 
 st.title("📊 YouTube Analyzer By Ardhan - ATM Edition (All-in-One)")
 
-# === Input API Keys ===
+# === Input API Key YouTube ===
 api_key = st.text_input("🔑 Masukkan YouTube API Key", type="password")
-
-gemini_api_key = st.text_input(
-    "✨ Masukkan Gemini API Key (Opsional)", 
-    type="password", 
-    help="Jika ingin generate judul & deskripsi otomatis dengan AI."
-)
-st.markdown(
-    """
-    👉 [Buat API Key Gemini di sini](https://aistudio.google.com/app/apikey)  
-    (Login dengan akun Google Anda, lalu copy API Key dan tempel di atas)
-    """
-)
-
-if gemini_api_key:
-    genai.configure(api_key=gemini_api_key)
 
 # === Input Query ===
 query = st.text_input("🎯 Masukkan niche/keyword (contoh: Healing Flute)")
@@ -67,13 +51,6 @@ def get_video_stats(video_ids):
         "key": api_key
     }
     return requests.get(YOUTUBE_VIDEO_URL, params=params).json().get("items", [])
-
-def generate_ai_content(prompt, model="gemini-1.5-flash"):
-    try:
-        response = genai.GenerativeModel(model).generate_content(prompt)
-        return response.text
-    except Exception as e:
-        return f"⚠️ Error: {e}"
 
 # === Analisis Video ===
 if st.button("🔍 Analisis Video"):
@@ -179,16 +156,49 @@ if st.button("🔍 Analisis Video"):
         channel_stats["Authority Score"] = round(channel_stats["VPH"] * channel_stats["Jumlah Video"],2)
         st.dataframe(channel_stats)
 
-        # === Heatmap Upload Time ===
+        # === Heatmap Upload Time (User Friendly) ===
         st.subheader("🕒 Best Time to Upload (Heatmap)")
+
         df["Publish Datetime"] = pd.to_datetime(df["Publish Time"])
         df["Hour"] = df["Publish Datetime"].dt.hour
         df["Day"] = df["Publish Datetime"].dt.day_name()
-        heatmap_data = df.pivot_table(index="Day", columns="Hour", values="Judul", aggfunc="count").fillna(0)
-        plt.figure(figsize=(12,6))
-        sns.heatmap(heatmap_data, cmap="YlOrRd", linewidths=0.5, annot=True, fmt=".0f")
-        plt.title("Distribusi Upload Video (Jam vs Hari)")
+
+        # Urutan hari agar rapi
+        day_order = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+        df["Day"] = pd.Categorical(df["Day"], categories=day_order, ordered=True)
+
+        heatmap_data = df.pivot_table(
+            index="Day",
+            columns="Hour",
+            values="Judul",
+            aggfunc="count"
+        ).fillna(0)
+
+        plt.figure(figsize=(14,6))
+        sns.heatmap(
+            heatmap_data,
+            cmap="YlGnBu",
+            linewidths=0.5,
+            annot=True,
+            fmt=".0f",
+            cbar_kws={'label': 'Jumlah Video Diupload'}
+        )
+        plt.title("📊 Waktu Upload Populer (Hari vs Jam)", fontsize=14, pad=20)
+        plt.xlabel("Jam (0 = Tengah Malam, 23 = 11 Malam)")
+        plt.ylabel("Hari")
         st.pyplot(plt)
+
+        # Tambahan keterangan untuk pemula
+        st.markdown("""
+✅ **Cara Membaca Heatmap**  
+- Warna **lebih gelap/biru tua** = lebih banyak video kompetitor upload di jam tersebut.  
+- Angka di dalam kotak = jumlah video yang diupload.  
+- Cari jam/hari dengan warna **paling pekat** → itulah waktu paling sering dipakai untuk upload.  
+
+💡 **Tips untuk Pemula**  
+- Upload di jam **ramai (warna pekat)** untuk mengikuti tren.  
+- Upload di jam **sepi (warna terang)** jika ingin lebih menonjol dibanding kompetitor.
+""")
 
         # === Top 10% Segmentation ===
         st.subheader("🔥 Video Performance Segmentation (Top 10% VPH)")
@@ -231,19 +241,3 @@ if st.button("🔍 Analisis Video"):
 
         # === Export CSV ===
         st.download_button("⬇️ Download CSV", df.to_csv(index=False), file_name="youtube_vph_data.csv", mime="text/csv")
-
-        # === AI Assistant (jika ada API Key Gemini) ===
-        if gemini_api_key:
-            st.subheader("🤖 AI Assistant (Gemini)")
-
-            if st.button("Generate Judul Otomatis"):
-                prompt = f"Buatkan 5 judul YouTube SEO-friendly, user friendly, berdasarkan niche '{query}' dan data kompetitor: {', '.join(top_tags[:10])}"
-                st.write(generate_ai_content(prompt))
-
-            if st.button("Generate Deskripsi Otomatis"):
-                prompt = f"Tuliskan deskripsi YouTube yang SEO-friendly untuk niche '{query}', dengan memasukkan keyword: {', '.join(top_tags[:10])}."
-                st.write(generate_ai_content(prompt))
-
-            if st.button("Translate Judul ke Inggris/Spanyol"):
-                prompt = f"Terjemahkan 5 judul YouTube berikut ke bahasa Inggris dan Spanyol: {seo_titles[:5]}"
-                st.write(generate_ai_content(prompt))
