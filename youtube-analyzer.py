@@ -3,6 +3,10 @@ import requests
 import pandas as pd
 from datetime import datetime, timezone
 import random
+from collections import Counter
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+from langdetect import detect
 
 st.set_page_config(page_title="YouTube Analyzer", layout="wide")
 
@@ -10,7 +14,7 @@ st.title("📊 YouTube Analyzer - VPH & SEO Title Generator")
 
 # Input API Key manual
 api_key = st.text_input("🔑 Masukkan YouTube API Key", type="password")
-query = st.text_input("🎯 Masukkan niche/keyword (contoh: janda muda)")
+query = st.text_input("🎯 Masukkan niche/keyword (contoh: Healing Flute)")
 region = st.selectbox("🌍 Negara Target", ["ALL","US","ID","JP","BR","IN","DE","GB","FR","ES"])
 video_type = st.selectbox("🎥 Jenis Video", ["Semua","Reguler","Shorts","Live"])
 max_results = st.slider("Jumlah video yang dianalisis", 5, 50, 20)
@@ -84,35 +88,38 @@ if st.button("🔍 Analisis Video"):
             data.append([
                 title, channel, views, vph, len(title),
                 published_time.strftime("%Y-%m-%d %H:%M"),
-                thumb, f"https://img.youtube.com/vi/{vid}/maxresdefault.jpg"
+                thumb, f"https://img.youtube.com/vi/{vid}/maxresdefault.jpg",
+                f"https://www.youtube.com/watch?v={vid}"
             ])
 
-        df = pd.DataFrame(data, columns=["Judul","Channel","Views","VPH","Panjang Judul","Publish Time","Thumbnail","Download Link"])
+        df = pd.DataFrame(data, columns=["Judul","Channel","Views","VPH","Panjang Judul","Publish Time","Thumbnail","Download Link","Video Link"])
         df = df.sort_values(by="VPH", ascending=False)
 
+        # --- Hasil utama
         st.subheader("📈 Hasil Analisis Video")
         st.dataframe(df[["Judul","Channel","Views","VPH","Panjang Judul","Publish Time"]])
 
-        st.subheader("🖼️ Preview Thumbnail & Download")
+        # --- Thumbnail + Link Video
+        st.subheader("🖼️ Preview Thumbnail & Link Video")
         for i, row in df.iterrows():
-            st.image(row["Thumbnail"], width=300, caption=f"{row['Judul']} | VPH: {row['VPH']}")
+            st.markdown(f"### ▶️ [{row['Judul']}]({row['Video Link']})")
+            st.image(row["Thumbnail"], width=300, caption=f"VPH: {row['VPH']}")
             st.markdown(f"[📥 Download Thumbnail]({row['Download Link']})")
 
-        # Analisis panjang judul
+        # --- Analisis panjang judul
         st.subheader("📏 Analisis Panjang Judul")
         avg_len = round(sum(title_lengths)/len(title_lengths),2)
         st.write(f"- Rata-rata panjang judul: **{avg_len} karakter**")
         st.write(f"- Terpendek: {min(title_lengths)} | Terpanjang: {max(title_lengths)}")
         st.write(f"- Rekomendasi: fokus di sekitar **{int(avg_len-5)}–{int(avg_len+10)} karakter**")
 
-        # Generate judul SEO-friendly
+        # --- Rekomendasi Judul SEO-Friendly
         st.subheader("📝 Rekomendasi Judul SEO-Friendly")
         unique_tags = list(set([t for t in all_tags if len(t) > 3]))
         seo_titles = []
         for i in range(10):
-            selected = random.sample(unique_tags, min(5,len(unique_tags)))
+            selected = random.sample(unique_tags, min(6,len(unique_tags)))
             new_title = " ".join(selected).title()
-            # pastikan panjang sesuai range rata-rata
             if len(new_title) < avg_len-10:
                 new_title += " Music Relaxation"
             seo_titles.append(new_title)
@@ -120,4 +127,46 @@ if st.button("🔍 Analisis Video"):
         for idx,title in enumerate(seo_titles,1):
             st.write(f"{idx}. {title}")
 
+        # --- Rekomendasi Tag
+        st.subheader("🏷️ Rekomendasi Tag")
+        counter = Counter([t.lower() for t in all_tags if len(t) > 3])
+        top_tags = [tag for tag,_ in counter.most_common(25)]
+        st.write(", ".join(top_tags))
+
+        # --- Word Cloud
+        st.subheader("☁️ Word Cloud dari Judul & Tag")
+        text_blob = " ".join(all_tags)
+        if text_blob.strip():
+            wc = WordCloud(width=800, height=400, background_color="white").generate(text_blob)
+            fig, ax = plt.subplots(figsize=(10,5))
+            ax.imshow(wc, interpolation="bilinear")
+            ax.axis("off")
+            st.pyplot(fig)
+
+        # --- Data Channel (proxy)
+        st.subheader("📺 Data Channel (Basic Info)")
+        channel_stats = df.groupby("Channel").agg({
+            "Views":"sum",
+            "VPH":"mean",
+            "Judul":"count"
+        }).reset_index().rename(columns={"Judul":"Jumlah Video"})
+        st.dataframe(channel_stats)
+
+        # --- Prediksi Negara Target (proxy)
+        st.subheader("🌍 Prediksi Target Negara (Proxy)")
+        lang_map = {"en":"US/Global","id":"Indonesia","es":"Spain/Latin America","de":"Germany","fr":"France","ja":"Japan"}
+        lang_detected = []
+        for t in df["Judul"].tolist():
+            try:
+                lang_detected.append(detect(t))
+            except:
+                continue
+        counter_lang = Counter(lang_detected)
+        top_lang = counter_lang.most_common(3)
+        if top_lang:
+            for lang, count in top_lang:
+                negara = lang_map.get(lang, "Unknown")
+                st.write(f"- {negara} (detected: {lang}) → {count} judul")
+
+        # --- Export CSV
         st.download_button("⬇️ Download CSV", df.to_csv(index=False), file_name="youtube_vph_data.csv", mime="text/csv")
