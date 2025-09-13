@@ -9,25 +9,42 @@ import matplotlib.pyplot as plt
 from langdetect import detect
 from pytrends.request import TrendReq
 import seaborn as sns
-import io
+import google.generativeai as genai
 
-st.set_page_config(page_title="YouTube Analyzer", layout="wide")
+# === Konfigurasi Awal ===
+st.set_page_config(page_title="YouTube Analyzer By Ardhan", layout="wide")
 
-st.title("📊 YouTube Analyzer - ATM Edition (All-in-One)")
+st.title("📊 YouTube Analyzer By Ardhan - ATM Edition (All-in-One)")
 
 # === Input API Keys ===
 api_key = st.text_input("🔑 Masukkan YouTube API Key", type="password")
-gemini_api_key = st.text_input("✨ (Opsional) Masukkan Gemini API Key", type="password")  # untuk fitur AI opsional
 
+gemini_api_key = st.text_input(
+    "✨ Masukkan Gemini API Key (Opsional)", 
+    type="password", 
+    help="Jika ingin generate judul & deskripsi otomatis dengan AI."
+)
+st.markdown(
+    """
+    👉 [Buat API Key Gemini di sini](https://aistudio.google.com/app/apikey)  
+    (Login dengan akun Google Anda, lalu copy API Key dan tempel di atas)
+    """
+)
+
+if gemini_api_key:
+    genai.configure(api_key=gemini_api_key)
+
+# === Input Query ===
 query = st.text_input("🎯 Masukkan niche/keyword (contoh: Healing Flute)")
 region = st.selectbox("🌍 Negara Target", ["ALL","US","ID","JP","BR","IN","DE","GB","FR","ES"])
 video_type = st.selectbox("🎥 Jenis Video", ["Semua","Reguler","Shorts","Live"])
 max_results = st.slider("Jumlah video yang dianalisis", 5, 50, 20)
 
-# API endpoints
+# === API endpoints ===
 YOUTUBE_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 YOUTUBE_VIDEO_URL = "https://www.googleapis.com/youtube/v3/videos"
 
+# === Fungsi Helper ===
 def search_videos(query, max_results=10):
     params = {
         "part": "snippet",
@@ -51,10 +68,17 @@ def get_video_stats(video_ids):
     }
     return requests.get(YOUTUBE_VIDEO_URL, params=params).json().get("items", [])
 
+def generate_ai_content(prompt, model="gemini-1.5-flash"):
+    try:
+        response = genai.GenerativeModel(model).generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"⚠️ Error: {e}"
+
 # === Analisis Video ===
 if st.button("🔍 Analisis Video"):
     if not api_key:
-        st.error("⚠️ Masukkan API Key dulu!")
+        st.error("⚠️ Masukkan API Key YouTube dulu!")
     elif not query:
         st.error("⚠️ Masukkan keyword niche!")
     else:
@@ -98,29 +122,25 @@ if st.button("🔍 Analisis Video"):
         ])
         df = df.sort_values(by="VPH", ascending=False)
 
-        # === 1. Hasil Utama ===
+        # === Hasil Utama ===
         st.subheader("📈 Hasil Analisis Video")
         st.dataframe(df[["Judul","Channel","Views","VPH","Panjang Judul","Publish Time"]])
 
-        # === 2. Thumbnail Preview ===
+        # === Preview Thumbnail ===
         st.subheader("🖼️ Preview Thumbnail & Link Video")
         for i, row in df.iterrows():
             st.markdown(f"### ▶️ [{row['Judul']}]({row['Video Link']})")
             st.image(row["Thumbnail"], width=300, caption=f"VPH: {row['VPH']}")
             st.markdown(f"[📥 Download Thumbnail]({row['Download Link']})")
 
-        # === 3. CTR Proxy (Thumbnail Analysis) ===
-        st.subheader("👁️ CTR Proxy (Thumbnail Analysis)")
-        st.write("⚡ Warna & teks thumbnail berpengaruh pada CTR. Analisis lebih lanjut bisa ditambah OCR/warna dominan.")
-
-        # === 4. Analisis Panjang Judul ===
+        # === Panjang Judul ===
         st.subheader("📏 Analisis Panjang Judul")
         avg_len = round(sum(title_lengths)/len(title_lengths),2)
         st.write(f"- Rata-rata panjang judul: **{avg_len} karakter**")
         st.write(f"- Terpendek: {min(title_lengths)} | Terpanjang: {max(title_lengths)}")
         st.write(f"- Rekomendasi: fokus di sekitar **{int(avg_len-5)}–{int(avg_len+10)} karakter**")
 
-        # === 5. SEO-Friendly Titles ===
+        # === SEO-Friendly Titles ===
         st.subheader("📝 Rekomendasi Judul SEO-Friendly")
         unique_tags = list(set([t for t in all_tags if len(t) > 3]))
         seo_titles = []
@@ -133,13 +153,13 @@ if st.button("🔍 Analisis Video"):
         for idx,title in enumerate(seo_titles,1):
             st.write(f"{idx}. {title}")
 
-        # === 6. Tag Recommendation ===
+        # === Tags ===
         st.subheader("🏷️ Rekomendasi Tag")
         counter = Counter([t.lower() for t in all_tags if len(t) > 3])
         top_tags = [tag for tag,_ in counter.most_common(25)]
         st.write(", ".join(top_tags))
 
-        # === 7. Word Cloud ===
+        # === Word Cloud ===
         st.subheader("☁️ Word Cloud dari Judul & Tag")
         text_blob = " ".join(all_tags)
         if text_blob.strip():
@@ -149,7 +169,7 @@ if st.button("🔍 Analisis Video"):
             ax.axis("off")
             st.pyplot(fig)
 
-        # === 8. Channel Authority & Consistency ===
+        # === Channel Authority ===
         st.subheader("📺 Data Channel (Authority & Consistency)")
         channel_stats = df.groupby("Channel").agg({
             "Views":"sum",
@@ -159,7 +179,7 @@ if st.button("🔍 Analisis Video"):
         channel_stats["Authority Score"] = round(channel_stats["VPH"] * channel_stats["Jumlah Video"],2)
         st.dataframe(channel_stats)
 
-        # === 9. Best Time to Upload (Heatmap) ===
+        # === Heatmap Upload Time ===
         st.subheader("🕒 Best Time to Upload (Heatmap)")
         df["Publish Datetime"] = pd.to_datetime(df["Publish Time"])
         df["Hour"] = df["Publish Datetime"].dt.hour
@@ -170,14 +190,14 @@ if st.button("🔍 Analisis Video"):
         plt.title("Distribusi Upload Video (Jam vs Hari)")
         st.pyplot(plt)
 
-        # === 10. Video Performance Segmentation ===
+        # === Top 10% Segmentation ===
         st.subheader("🔥 Video Performance Segmentation (Top 10% VPH)")
         threshold = df["VPH"].quantile(0.9)
         top_videos = df[df["VPH"] >= threshold]
         st.write(f"Menampilkan {len(top_videos)} video dengan VPH di atas {threshold:.2f}")
         st.dataframe(top_videos[["Judul","Channel","Views","VPH","Publish Time"]])
 
-        # judul rekomendasi dari top video
+        # Rekomendasi judul dari pola top 10%
         all_top_tags = []
         for title in top_videos["Judul"].tolist():
             all_top_tags.extend(title.split())
@@ -186,15 +206,15 @@ if st.button("🔍 Analisis Video"):
         for i in range(5):
             st.write(f"{i+1}. {' '.join(random.sample(unique_top_tags, min(6,len(unique_top_tags)))).title()}")
 
-        # === 11. Competitor Gap Finder ===
+        # === Competitor Gap Finder ===
         st.subheader("🕵️ Competitor Gap Finder")
         freq_all = Counter([t.lower() for t in all_tags if len(t) > 3])
         freq_top = Counter([t.lower() for t in all_top_tags if len(t) > 3])
-        gap_keywords = [tag for tag,count in freq_top.items() if freq_all[tag] <= 2]  # muncul di top, jarang di semua
+        gap_keywords = [tag for tag,count in freq_top.items() if freq_all[tag] <= 2]
         st.write("💡 Keyword unik dari video top, jarang dipakai lainnya:")
         st.write(", ".join(gap_keywords))
 
-        # === 12. Trend Detector ===
+        # === Trend Detector ===
         st.subheader("📊 Trend Detector (Google Trends)")
         try:
             pytrends = TrendReq(hl='en-US', tz=360)
@@ -209,11 +229,21 @@ if st.button("🔍 Analisis Video"):
         except Exception as e:
             st.warning(f"Gagal ambil data tren: {e}")
 
-        # === 13. Export CSV & Excel ===
+        # === Export CSV ===
         st.download_button("⬇️ Download CSV", df.to_csv(index=False), file_name="youtube_vph_data.csv", mime="text/csv")
 
-        # === 14. AI Assistant (opsional Gemini/GPT) ===
+        # === AI Assistant (jika ada API Key Gemini) ===
         if gemini_api_key:
-            st.subheader("✨ AI Assistant (Gemini/GPT)")
-            st.info("🚧 Belum diimplementasi penuh. Bisa dipakai untuk auto-generate judul, deskripsi, tag multi-bahasa.")
-            # Di sini nanti tinggal ditambahkan call ke Gemini API
+            st.subheader("🤖 AI Assistant (Gemini)")
+
+            if st.button("Generate Judul Otomatis"):
+                prompt = f"Buatkan 5 judul YouTube SEO-friendly, user friendly, berdasarkan niche '{query}' dan data kompetitor: {', '.join(top_tags[:10])}"
+                st.write(generate_ai_content(prompt))
+
+            if st.button("Generate Deskripsi Otomatis"):
+                prompt = f"Tuliskan deskripsi YouTube yang SEO-friendly untuk niche '{query}', dengan memasukkan keyword: {', '.join(top_tags[:10])}."
+                st.write(generate_ai_content(prompt))
+
+            if st.button("Translate Judul ke Inggris/Spanyol"):
+                prompt = f"Terjemahkan 5 judul YouTube berikut ke bahasa Inggris dan Spanyol: {seo_titles[:5]}"
+                st.write(generate_ai_content(prompt))
