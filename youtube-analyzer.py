@@ -23,7 +23,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("📊 YouTube Analyzer By Ardhan - ATM Edition (All-in-One)")
+st.title("📊 YouTube Analyzer By Ardhan")
 
 # === Input API Key YouTube ===
 api_key = st.text_input("🔑 Masukkan YouTube API Key", type="password")
