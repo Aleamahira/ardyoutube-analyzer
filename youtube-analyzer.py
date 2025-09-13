@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 import pandas as pd
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 # === Konfigurasi Awal ===
 st.set_page_config(page_title="YouTube Trending Explorer", layout="wide")
@@ -28,7 +28,7 @@ if not st.session_state.api_key:
 with st.form("youtube_form"):
     keyword = st.text_input("Kata Kunci", placeholder="healing flute meditation")
     periode = st.selectbox("Periode", ["Semua Waktu", "Hari Ini", "Minggu Ini", "Bulan Ini", "12 Bulan Terakhir"])
-    negara = st.text_input("Negara (kode 2 huruf, contoh: US, ID, IN)", "US")
+    negara = st.text_input("Negara", "Worldwide")
     tipe_video = st.radio("Tipe Video", ["Semua", "Regular", "Short", "Live"])
     sort_option = st.selectbox("Urutkan:", ["Paling Relevan", "Paling Banyak Ditonton", "Terbaru", "VPH Tertinggi"])
     submit = st.form_submit_button("🔍 Cari Video")
@@ -39,41 +39,19 @@ def hitung_vph(views, publishedAt):
     hours = (datetime.now(timezone.utc) - published_time).total_seconds() / 3600
     return round(views / hours, 2) if hours > 0 else 0
 
-# === Ambil Video ===
-def get_youtube_videos(api_key, query, region, periode, tipe, max_results=15):
+# === Panggil API YouTube ===
+def get_youtube_videos(api_key, query, max_results=15):
     url = "https://www.googleapis.com/youtube/v3/search"
     params = {
         "part": "snippet",
+        "q": query,
         "type": "video",
         "maxResults": max_results,
         "key": api_key
     }
-
-    if query.strip():
-        params["q"] = query
-    if region and region.lower() != "worldwide":
-        params["regionCode"] = region.upper()
-
-    # === Filter periode ===
-    now = datetime.utcnow()
-    if periode == "Hari Ini":
-        params["publishedAfter"] = (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    elif periode == "Minggu Ini":
-        params["publishedAfter"] = (now - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    elif periode == "Bulan Ini":
-        params["publishedAfter"] = (now - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    elif periode == "12 Bulan Terakhir":
-        params["publishedAfter"] = (now - timedelta(days=365)).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-    # === Filter tipe video ===
-    if tipe == "Short":
-        params["videoDuration"] = "short"
-    elif tipe == "Regular":
-        params["videoDuration"] = "long"
-    elif tipe == "Live":
-        params["eventType"] = "live"
-
     r = requests.get(url, params=params).json()
+
+    videos = []
     video_ids = [item["id"]["videoId"] for item in r.get("items", [])]
 
     if not video_ids:
@@ -87,7 +65,6 @@ def get_youtube_videos(api_key, query, region, periode, tipe, max_results=15):
     }
     stats_r = requests.get(stats_url, params=stats_params).json()
 
-    videos = []
     for item in stats_r.get("items", []):
         vid = {
             "id": item["id"],
@@ -110,20 +87,21 @@ def urutkan_video(data, mode):
         return sorted(data, key=lambda x: x["publishedAt"], reverse=True)
     elif mode == "VPH Tertinggi":
         return sorted(data, key=lambda x: x["vph"], reverse=True)
-    else:  # relevan
+    else:  # relevan (default API)
         return data
 
 # === Jalankan pencarian ===
 if submit:
     with st.spinner("Mengambil data dari YouTube..."):
-        videos = get_youtube_videos(st.session_state.api_key, keyword, negara, periode, tipe_video)
+        videos = get_youtube_videos(st.session_state.api_key, keyword)
         videos = urutkan_video(videos, sort_option)
 
     if not videos:
-        st.error("❌ Tidak ada video ditemukan. Coba ganti kata kunci / periode / negara.")
+        st.error("❌ Tidak ada video ditemukan")
     else:
         st.success(f"{len(videos)} video ditemukan")
 
+        # === Tampilkan Video ===
         cols = st.columns(3)
         for i, v in enumerate(videos):
             with cols[i % 3]:
@@ -131,8 +109,8 @@ if submit:
                 st.markdown(f"**[{v['title']}]({'https://www.youtube.com/watch?v=' + v['id']})**")
                 st.caption(f"{v['channel']} • {v['views']:,} views • {round(v['vph'])} VPH")
 
+        # === Rekomendasi Judul ===
         st.subheader("💡 Rekomendasi Judul untuk Dipakai")
         rekomendasi = [v["title"] for v in videos[:5]]
         for r in rekomendasi:
-            st.text(r)
-            st.download_button("📋 Salin Judul", r, file_name="judul.txt", mime="text/plain")
+            st.write(f"- {r}")
