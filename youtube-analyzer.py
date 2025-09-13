@@ -1,7 +1,6 @@
 import streamlit as st
 import requests
 from datetime import datetime, timezone
-import pyperclip
 
 # === Konfigurasi Awal ===
 st.set_page_config(page_title="YouTube Trending Explorer", layout="wide")
@@ -98,7 +97,7 @@ if submit:
     else:
         st.success(f"{len(videos)} video ditemukan")
 
-        # === Tampilkan Video + Copy Judul ===
+        # === Tampilkan Video ===
         cols = st.columns(3)
         all_titles = []
         for i, v in enumerate(videos):
@@ -106,19 +105,17 @@ if submit:
                 st.image(v["thumbnail"])
                 st.markdown(f"**[{v['title']}]({'https://www.youtube.com/watch?v=' + v['id']})**")
                 st.caption(f"{v['channel']} • {v['views']:,} views • {round(v['vph'])} VPH")
-                if st.button(f"📋 Copy Judul {i+1}", key=f"copy_{i}"):
-                    pyperclip.copy(v["title"])
-                    st.success("Judul berhasil dicopy!")
+                st.text_input(f"Copy Judul {i+1}", v["title"])
+
             all_titles.append(v["title"])
 
         # === Rekomendasi Judul ===
         st.subheader("💡 Rekomendasi Judul untuk Dipakai")
         for r in all_titles[:5]:
-            st.write(f"- {r}")
+            st.text_input("Copy Judul", r)
 
         # === Auto Tag 500 karakter ===
         st.subheader("🏷️ Rekomendasi Tag (Max 500 karakter)")
-        # gabungkan semua kata dari judul
         kata_unik = []
         for t in all_titles:
             for w in t.split():
@@ -131,7 +128,4 @@ if submit:
             tag_string = tag_string[:497] + "..."
 
         st.code(tag_string, language="text")
-
-        if st.button("📋 Copy Tag"):
-            pyperclip.copy(tag_string)
-            st.success("Tag berhasil dicopy!")
+        st.text_input("Copy Tag", tag_string)
