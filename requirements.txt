@@ -6,3 +6,4 @@ matplotlib
 langdetect
 pytrends
 seaborn
+google-generativeai
