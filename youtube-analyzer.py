@@ -249,4 +249,15 @@ if st.button("🔍 Analisis Video"):
         try:
             pytrends = TrendReq(hl='en-US', tz=360)
             kw_list = [query]
-            geo = region if region != "ALL"
+            geo = region if region != "ALL" else ""   # ✅ FIX SYNTAX ERROR
+            pytrends.build_payload(kw_list, cat=0, timeframe='today 3-m', geo=geo, gprop='')
+            trend_data = pytrends.interest_over_time()
+            if not trend_data.empty:
+                st.line_chart(trend_data[query])
+            else:
+                st.info("Tidak ada data tren untuk keyword ini.")
+        except Exception as e:
+            st.warning(f"Gagal ambil data tren: {e}")
+
+        # === Export CSV ===
+        st.download_button("⬇️ Download CSV", df.to_csv(index=False), file_name="youtube_views_data.csv", mime="text/csv")
