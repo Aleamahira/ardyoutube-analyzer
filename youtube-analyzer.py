@@ -119,15 +119,15 @@ if st.button("🔍 Analisis Video"):
         # === Filter video valid (buang Views=0 atau VPH=0) ===
         df = df[(df["VPH"] > 0) & (df["Views"] > 0)]
 
-        # === Hasil Utama (VPH Tertinggi) ===
-        st.subheader("📈 Hasil Analisis Video (Berdasarkan VPH Tertinggi, 12 Bulan Terakhir)")
-        df_vph = df.sort_values(by="VPH", ascending=False)
-        st.dataframe(df_vph[["Judul","Channel","Views","VPH","Panjang Judul","Publish Time"]])
-
-        # === Hasil Tambahan (Views Tertinggi) ===
-        st.subheader("👑 Video dengan Views Tertinggi (12 Bulan Terakhir)")
+        # === Hasil Utama (Views Tertinggi) ===
+        st.subheader("👑 Video Populer (Berdasarkan Views Tertinggi, 12 Bulan Terakhir)")
         df_views = df.sort_values(by="Views", ascending=False)
         st.dataframe(df_views[["Judul","Channel","Views","VPH","Panjang Judul","Publish Time"]])
+
+        # === Hasil Tambahan (VPH Tertinggi) ===
+        st.subheader("⚡ Video dengan VPH Tertinggi (12 Bulan Terakhir)")
+        df_vph = df.sort_values(by="VPH", ascending=False)
+        st.dataframe(df_vph[["Judul","Channel","Views","VPH","Panjang Judul","Publish Time"]])
 
         # === Konfirmasi Rentang Waktu ===
         st.info("⚡ Semua data di atas hanya menampilkan video dengan Views > 0 dan VPH > 0 dari 12 bulan terakhir.")
@@ -136,7 +136,7 @@ if st.button("🔍 Analisis Video"):
         st.subheader("🖼️ Preview Thumbnail & Link Video")
         for i, row in df.iterrows():
             st.markdown(f"### ▶️ [{row['Judul']}]({row['Video Link']})")
-            st.image(row["Thumbnail"], width=300, caption=f"VPH: {row['VPH']}")
+            st.image(row["Thumbnail"], width=300, caption=f"Views: {row['Views']} | VPH: {row['VPH']}")
             st.markdown(f"[📥 Download Thumbnail]({row['Download Link']})")
 
         # === Panjang Judul ===
@@ -219,20 +219,20 @@ if st.button("🔍 Analisis Video"):
         plt.ylabel("Hari")
         st.pyplot(plt)
 
-        # === Top 10% Segmentation ===
-        st.subheader("🔥 Video Performance Segmentation (Top 10% VPH)")
+        # === Top 10% Segmentation (berdasarkan Views) ===
+        st.subheader("🔥 Video Performance Segmentation (Top 10% Views)")
         if not df.empty:
-            threshold = df["VPH"].quantile(0.9)
-            top_videos = df[df["VPH"] >= threshold]
-            st.write(f"Menampilkan {len(top_videos)} video dengan VPH di atas {threshold:.2f}")
+            threshold = df["Views"].quantile(0.9)
+            top_videos = df[df["Views"] >= threshold]
+            st.write(f"Menampilkan {len(top_videos)} video dengan Views di atas {threshold:.0f}")
             st.dataframe(top_videos[["Judul","Channel","Views","VPH","Publish Time"]])
 
-            # Rekomendasi judul dari pola top 10%
+            # Rekomendasi judul dari pola top 10% (berdasarkan Views)
             all_top_tags = []
             for title in top_videos["Judul"].tolist():
                 all_top_tags.extend(title.split())
             unique_top_tags = list(set([t for t in all_top_tags if len(t) > 3]))
-            st.subheader("📝 Judul dari Pola Video Top 10%")
+            st.subheader("📝 Judul dari Pola Video Top 10% (Views)")
             for i in range(min(5, len(unique_top_tags))):
                 st.write(f"{i+1}. {' '.join(random.sample(unique_top_tags, min(6,len(unique_top_tags)))).title()}")
 
@@ -249,15 +249,4 @@ if st.button("🔍 Analisis Video"):
         try:
             pytrends = TrendReq(hl='en-US', tz=360)
             kw_list = [query]
-            geo = region if region != "ALL" else ""
-            pytrends.build_payload(kw_list, cat=0, timeframe='today 3-m', geo=geo, gprop='')
-            trend_data = pytrends.interest_over_time()
-            if not trend_data.empty:
-                st.line_chart(trend_data[query])
-            else:
-                st.info("Tidak ada data tren untuk keyword ini.")
-        except Exception as e:
-            st.warning(f"Gagal ambil data tren: {e}")
-
-        # === Export CSV ===
-        st.download_button("⬇️ Download CSV", df.to_csv(index=False), file_name="youtube_vph_data.csv", mime="text/csv")
+            geo = region if region != "ALL"
