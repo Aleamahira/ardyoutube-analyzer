@@ -11,6 +11,7 @@ import numpy as np
 from PIL import Image
 import colorsys
 import io
+import isodate  # untuk parsing durasi video YouTube ISO8601
 
 st.set_page_config(page_title="YouTube Analyzer", layout="wide")
 
@@ -52,16 +53,11 @@ def get_video_stats(video_ids):
     return requests.get(YOUTUBE_VIDEO_URL, params=params).json().get("items", [])
 
 def parse_duration(duration):
-    h, m, s = 0, 0, 0
-    if "H" in duration:
-        h = int(duration.split("H")[0].replace("PT",""))
-        duration = duration.split("H")[1]
-    if "M" in duration:
-        m = int(duration.split("M")[0].replace("PT","").replace("H",""))
-        duration = duration.split("M")[1]
-    if "S" in duration:
-        s = int(duration.replace("S","").replace("PT",""))
-    return h*3600 + m*60 + s
+    """Konversi ISO8601 (PT#M#S) ke detik"""
+    try:
+        return int(isodate.parse_duration(duration).total_seconds())
+    except:
+        return 0
 
 def get_dominant_color(url):
     try:
@@ -88,21 +84,26 @@ if st.button("🔍 Analisis Video"):
 
         for v in video_details:
             vid = v["id"]
-            snippet = v["snippet"]
-            stats = v["statistics"]
-            details = v["contentDetails"]
+            snippet = v.get("snippet", {})
+            stats = v.get("statistics", {})
+            details = v.get("contentDetails", {})
 
-            title = snippet["title"]
-            channel = snippet["channelTitle"]
-            thumb = snippet["thumbnails"]["high"]["url"]
+            title = snippet.get("title", "No Title")
+            channel = snippet.get("channelTitle", "Unknown Channel")
+            thumb = snippet.get("thumbnails", {}).get("high", {}).get("url", "")
             views = int(stats.get("viewCount", 0))
-            published = snippet["publishedAt"]
+            published = snippet.get("publishedAt", datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ"))
 
-            # Durasi
-            duration = parse_duration(details["duration"])
-            if duration_filter == "Pendek (<5m)" and duration > 300: continue
-            if duration_filter == "Medium (5-20m)" and not (300 <= duration <= 1200): continue
-            if duration_filter == "Panjang (>20m)" and duration < 1200: continue
+            # Durasi aman
+            duration_str = details.get("duration", "PT0S")
+            duration = parse_duration(duration_str)
+
+            if duration_filter == "Pendek (<5m)" and duration > 300: 
+                continue
+            if duration_filter == "Medium (5-20m)" and not (300 <= duration <= 1200): 
+                continue
+            if duration_filter == "Panjang (>20m)" and duration < 1200: 
+                continue
 
             # Hitung umur video (jam)
             published_time = datetime.strptime(published, "%Y-%m-%dT%H:%M:%SZ")
