@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import pandas as pd
 from datetime import datetime, timezone
+from io import BytesIO
 
 st.set_page_config(page_title="YouTube Trending Explorer", layout="wide")
 
@@ -60,13 +61,7 @@ def format_jam(publishedAt):
 # === API YouTube ===
 def get_youtube_videos(api_key, query, max_results=15):
     url = "https://www.googleapis.com/youtube/v3/search"
-    params = {
-        "part": "snippet",
-        "q": query,
-        "type": "video",
-        "maxResults": max_results,
-        "key": api_key
-    }
+    params = {"part": "snippet","q": query,"type": "video","maxResults": max_results,"key": api_key}
     r = requests.get(url, params=params).json()
 
     videos = []
@@ -76,11 +71,7 @@ def get_youtube_videos(api_key, query, max_results=15):
         return []
 
     stats_url = "https://www.googleapis.com/youtube/v3/videos"
-    stats_params = {
-        "part": "statistics,snippet",
-        "id": ",".join(video_ids),
-        "key": api_key
-    }
+    stats_params = {"part": "statistics,snippet","id": ",".join(video_ids),"key": api_key}
     stats_r = requests.get(stats_url, params=stats_params).json()
 
     for item in stats_r.get("items", []):
@@ -108,6 +99,15 @@ def urutkan_video(data, mode):
     else:
         return data
 
+# === Generator Judul Otomatis (>=66 karakter) ===
+def buat_judul(keyword):
+    templates = [
+        f"Heal Your Soul Fast | {keyword.title()} for Stress Relief and Inner Calm",
+        f"{keyword.title()} | Deep Relaxation Music for Sleep, Healing and Peace",
+        f"3 Hours of {keyword.title()} – Release Negativity, Stress and Toxins"
+    ]
+    return [j for j in templates if len(j) >= 66]
+
 # === Jalankan ===
 if submit:
     with st.spinner("Mengambil data dari YouTube..."):
@@ -119,10 +119,8 @@ if submit:
     else:
         st.success(f"{len(videos)} video ditemukan")
 
-        # tampilkan video
         cols = st.columns(3)
-        all_titles = []
-        data_excel = []
+        all_titles, data_excel = [], []
 
         for i, v in enumerate(videos):
             with cols[i % 3]:
@@ -142,21 +140,19 @@ if submit:
 
             all_titles.append(v["title"])
             data_excel.append({
-                "Judul": v["title"],
-                "Channel": v["channel"],
-                "Views": v["views"],
-                "VPH": v["vph"],
-                "Tanggal Upload": format_time(v["publishedAt"]),
+                "Judul": v["title"], "Channel": v["channel"], "Views": v["views"],
+                "VPH": v["vph"], "Tanggal Upload": format_time(v["publishedAt"]),
                 "Jam Upload": format_jam(v["publishedAt"]),
                 "Link": f"https://www.youtube.com/watch?v={v['id']}"
             })
 
-        # rekomendasi judul
-        st.subheader("💡 Rekomendasi Judul")
-        for r in all_titles[:5]:
+        # === Rekomendasi Judul ===
+        st.subheader("💡 Rekomendasi Judul Baru")
+        rekom = buat_judul(keyword)
+        for r in rekom:
             st.text_input("Copy Judul", r)
 
-        # auto tag
+        # === Auto Tag ===
         st.subheader("🏷️ Rekomendasi Tag (Max 500 karakter)")
         kata_unik = []
         for t in all_titles:
@@ -170,12 +166,16 @@ if submit:
         st.code(tag_string, language="text")
         st.text_input("Copy Tag", tag_string)
 
-        # download excel
+        # === Download Excel ===
         st.subheader("⬇️ Download Data")
         df = pd.DataFrame(data_excel)
+        output = BytesIO()
+        df.to_excel(output, index=False, engine="openpyxl")
+        processed_data = output.getvalue()
+
         st.download_button(
             label="Download Excel",
-            data=df.to_excel(index=False, engine="openpyxl"),
+            data=processed_data,
             file_name="youtube_riset.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
