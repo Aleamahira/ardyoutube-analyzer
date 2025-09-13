@@ -146,8 +146,11 @@ if st.button("🔍 Analisis Video"):
         # Pastikan Publish Datetime benar2 datetime
         df["Publish Datetime"] = pd.to_datetime(df["Publish Datetime"], errors="coerce")
 
+        # Buang baris yang gagal parsing (NaT)
+        df = df.dropna(subset=["Publish Datetime"])
+
         # === Filter Berdasarkan Rentang Waktu ===
-        if time_limit:
+        if time_limit is not None:
             df = df[df["Publish Datetime"] >= time_limit]
 
         # Hanya tampilkan VPH > 0
