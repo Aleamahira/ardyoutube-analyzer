@@ -1,101 +1,69 @@
 import streamlit as st
 import requests
 import pandas as pd
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 import random
 from collections import Counter
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+from langdetect import detect
+from pytrends.request import TrendReq
+import seaborn as sns
 
 # === Konfigurasi Awal ===
 st.set_page_config(page_title="YouTube Analyzer By Ardhan", layout="wide")
 
-st.markdown("""
-    <style>
-    h1 {font-size: 38px !important;}
-    h2, h3, h4 {font-size: 26px !important;}
-    p, li, div, span {font-size: 18px !important;}
-    .stDataFrame, .stMarkdown, .stTable {font-size: 18px !important;}
-    .big-title {font-size: 30px !important; font-weight: 700; color: #d32f2f; margin-top: 8px;}
-    </style>
-""", unsafe_allow_html=True)
-
-st.title("📊 YouTube Analyzer By Ardhan - Judul & Tag Rekomendasi")
-
-# === Fungsi Copy ke Clipboard via JS ===
-def copy_to_clipboard(text, key):
-    safe_text = str(text).replace('"', '\\"')
-    js_code = f"""
-    <script>
-    function copyText{key}() {{
-        navigator.clipboard.writeText("{safe_text}");
-        alert("📋 '{safe_text[:40]}...' berhasil disalin!");
-    }}
-    </script>
-    <button onclick="copyText{key}()" style="background:#e0f2fe;padding:6px 12px;border-radius:8px;border:1px solid #38bdf8;cursor:pointer;font-size:15px;margin-bottom:6px;">
-        📋 Salin
-    </button>
-    """
-    st.markdown(js_code, unsafe_allow_html=True)
+st.title("📊 YouTube Analyzer By Ardhan - ATM Edition (All-in-One)")
 
 # === Input API Key YouTube ===
 api_key = st.text_input("🔑 Masukkan YouTube API Key", type="password")
 
+# Tombol untuk ambil API Key
+if st.button("📥 Ambil API Key YouTube"):
+    st.markdown("""
+    👉 [Klik di sini untuk buat API Key YouTube](https://console.cloud.google.com/apis/credentials)  
+
+    **Langkah Singkat untuk Pemula:**  
+    1. Login ke [Google Cloud Console](https://console.cloud.google.com/) dengan akun Google.  
+    2. Buat **Project Baru** (misalnya: "YouTube Analyzer").  
+    3. Aktifkan **YouTube Data API v3** di menu Library.  
+    4. Buka menu **Credentials** → klik **Create API Key**.  
+    5. Copy API Key dan tempelkan di atas.  
+    """)
+
+# === Input Query ===
 query = st.text_input("🎯 Masukkan niche/keyword (contoh: Healing Flute)")
 region = st.selectbox("🌍 Negara Target", ["ALL","US","ID","JP","BR","IN","DE","GB","FR","ES"])
-max_fetch = st.slider("Jumlah maksimum video yang diambil", 50, 200, 100, step=50)
+video_type = st.selectbox("🎥 Jenis Video", ["Semua","Reguler","Shorts","Live"])
+max_results = st.slider("Jumlah video yang dianalisis", 5, 50, 20)
 
 # === API endpoints ===
 YOUTUBE_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 YOUTUBE_VIDEO_URL = "https://www.googleapis.com/youtube/v3/videos"
 
-def search_videos(query, total_results=100):
-    collected, page_token = [], None
-    while len(collected) < total_results:
-        need = min(50, total_results - len(collected))
-        params = {
-            "part": "snippet",
-            "q": query,
-            "type": "video",
-            "maxResults": need,
-            "order": "relevance",  # mix lama + baru
-            "key": api_key
-        }
-        if region != "ALL":
-            params["regionCode"] = region
-        if page_token:
-            params["pageToken"] = page_token
-
-        resp = requests.get(YOUTUBE_SEARCH_URL, params=params).json()
-        items = resp.get("items", [])
-        collected.extend(items)
-        page_token = resp.get("nextPageToken")
-        if not page_token:
-            break
-    return collected[:total_results]
+# === Fungsi Helper ===
+def search_videos(query, max_results=10):
+    params = {
+        "part": "snippet",
+        "q": query,
+        "type": "video",
+        "maxResults": max_results,
+        "order": "date",
+        "key": api_key
+    }
+    if region != "ALL":
+        params["regionCode"] = region
+    if video_type == "Live":
+        params["eventType"] = "live"
+    return requests.get(YOUTUBE_SEARCH_URL, params=params).json().get("items", [])
 
 def get_video_stats(video_ids):
-    if not video_ids:
-        return []
     params = {
         "part": "statistics,snippet,contentDetails",
         "id": ",".join(video_ids),
         "key": api_key
     }
     return requests.get(YOUTUBE_VIDEO_URL, params=params).json().get("items", [])
-
-def is_shorts(duration_iso):
-    """Tentukan apakah video adalah Shorts (durasi < 60 detik)"""
-    if not duration_iso:
-        return False
-    d = duration_iso.replace('PT','')
-    minutes, seconds = 0, 0
-    if 'M' in d:
-        parts = d.split('M')
-        minutes = int(parts[0]) if parts[0] else 0
-        d = parts[1] if len(parts) > 1 else ''
-    if 'S' in d:
-        seconds = int(d.replace('S','')) if d.replace('S','') else 0
-    total = minutes * 60 + seconds
-    return total > 0 and total < 60
 
 # === Analisis Video ===
 if st.button("🔍 Analisis Video"):
@@ -104,111 +72,185 @@ if st.button("🔍 Analisis Video"):
     elif not query:
         st.error("⚠️ Masukkan keyword niche!")
     else:
-        items = search_videos(query, total_results=max_fetch)
-        st.info(f"🎯 Hasil search awal: {len(items)} video")
+        videos = search_videos(query, max_results=max_results)
+        video_ids = [v["id"]["videoId"] for v in videos]
+        video_details = get_video_stats(video_ids)
 
-        if not items:
-            st.warning("⚠️ Tidak ada hasil dari API.")
-        else:
-            video_ids = [it.get("id", {}).get("videoId") for it in items if it.get("id", {}).get("videoId")]
-            details = get_video_stats(video_ids)
-            st.info(f"📥 Detail video berhasil diambil: {len(details)}")
+        data, all_tags, title_lengths = [], [], []
 
-            data = []
-            for v in details:
-                try:
-                    vid = v["id"]
-                    snip = v.get("snippet", {})
-                    stats = v.get("statistics", {})
-                    content = v.get("contentDetails", {})
+        for v in video_details:
+            vid = v["id"]
+            snippet = v["snippet"]
+            stats = v["statistics"]
 
-                    title = snip.get("title", "")
-                    channel = snip.get("channelTitle", "")
-                    views = int(stats.get("viewCount", 0)) if "viewCount" in stats else 0
-                    published = snip.get("publishedAt", None)
-                    duration = content.get("duration")
+            title = snippet["title"]
+            channel = snippet["channelTitle"]
+            thumb = snippet["thumbnails"]["high"]["url"]
+            views = int(stats.get("viewCount", 0))
+            published = snippet["publishedAt"]
 
-                    if not published:
-                        continue
+            # Hitung umur video (jam)
+            published_time = datetime.strptime(published, "%Y-%m-%dT%H:%M:%SZ")
+            age_hours = (datetime.now(timezone.utc) - published_time.replace(tzinfo=timezone.utc)).total_seconds()/3600
+            vph = round(views / age_hours, 2) if age_hours > 0 else 0
 
-                    published_time = datetime.strptime(published, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-                    age_hours = (datetime.now(timezone.utc) - published_time).total_seconds() / 3600
-                    vph = round(views / age_hours, 2) if age_hours > 0 else 0
+            title_lengths.append(len(title))
+            tags = snippet.get("tags", [])
+            all_tags.extend(tags)
+            all_tags.extend(title.split())
 
-                    # Filter Shorts → hanya simpan Reguler & Live
-                    if not is_shorts(duration):
-                        data.append([
-                            title, channel, views, vph, len(title),
-                            published_time, f"https://www.youtube.com/watch?v={vid}"
-                        ])
-                except Exception:
-                    continue
-
-            if not data:
-                st.warning("⚠️ Semua video terfilter. Menampilkan data mentah sebagai fallback.")
-                data = [[
-                    v.get("snippet", {}).get("title","-"),
-                    v.get("snippet", {}).get("channelTitle","-"),
-                    v.get("statistics",{}).get("viewCount","-"),
-                    0,
-                    len(v.get("snippet", {}).get("title","")),
-                    v.get("snippet", {}).get("publishedAt","-"),
-                    f"https://www.youtube.com/watch?v={v['id']}"
-                ] for v in details]
-
-            df = pd.DataFrame(data, columns=[
-                "Judul","Channel","Views","VPH","Panjang Judul","Publish Datetime","Video Link"
+            data.append([
+                title, channel, views, vph, len(title),
+                published_time.strftime("%Y-%m-%d %H:%M"),
+                thumb, f"https://img.youtube.com/vi/{vid}/maxresdefault.jpg",
+                f"https://www.youtube.com/watch?v={vid}"
             ])
-            st.info(f"✅ Video valid setelah filter: {len(df)}")
 
-            # 1) Views tertinggi → filter 9 bulan terakhir
-            cutoff = datetime.now(timezone.utc) - timedelta(days=270)
-            df_views = df[df["Publish Datetime"] >= cutoff].sort_values(by="Views", ascending=False).head(10)
+        df = pd.DataFrame(data, columns=[
+            "Judul","Channel","Views","VPH","Panjang Judul","Publish Time",
+            "Thumbnail","Download Link","Video Link"
+        ])
+        df = df.sort_values(by="VPH", ascending=False)
 
-            # 2) VPH tertinggi → tanpa batas waktu
-            df_vph = df.sort_values(by="VPH", ascending=False).head(10)
+        # === Hasil Utama ===
+        st.subheader("📈 Hasil Analisis Video")
+        st.dataframe(df[["Judul","Channel","Views","VPH","Panjang Judul","Publish Time"]])
 
-            # 3) Gabungkan
-            combined = pd.concat([df_views, df_vph]).drop_duplicates().reset_index(drop=True)
+        # === Preview Thumbnail ===
+        st.subheader("🖼️ Preview Thumbnail & Link Video")
+        for i, row in df.iterrows():
+            st.markdown(f"### ▶️ [{row['Judul']}]({row['Video Link']})")
+            st.image(row["Thumbnail"], width=300, caption=f"VPH: {row['VPH']}")
+            st.markdown(f"[📥 Download Thumbnail]({row['Download Link']})")
 
-            if combined.empty:
-                st.warning("⚠️ Tidak ada kombinasi video untuk rekomendasi judul.")
+        # === Panjang Judul ===
+        st.subheader("📏 Analisis Panjang Judul")
+        avg_len = round(sum(title_lengths)/len(title_lengths),2)
+        st.write(f"- Rata-rata panjang judul: **{avg_len} karakter**")
+        st.write(f"- Terpendek: {min(title_lengths)} | Terpanjang: {max(title_lengths)}")
+        st.write(f"- Rekomendasi: fokus di sekitar **{int(avg_len-5)}–{int(avg_len+10)} karakter**")
+
+        # === SEO-Friendly Titles ===
+        st.subheader("📝 Rekomendasi Judul SEO-Friendly")
+        unique_tags = list(set([t for t in all_tags if len(t) > 3]))
+        seo_titles = []
+        for i in range(10):
+            selected = random.sample(unique_tags, min(6,len(unique_tags)))
+            new_title = " ".join(selected).title()
+            if len(new_title) < avg_len-10:
+                new_title += " Music Relaxation"
+            seo_titles.append(new_title)
+        for idx,title in enumerate(seo_titles,1):
+            st.write(f"{idx}. {title}")
+
+        # === Tags ===
+        st.subheader("🏷️ Rekomendasi Tag")
+        counter = Counter([t.lower() for t in all_tags if len(t) > 3])
+        top_tags = [tag for tag,_ in counter.most_common(25)]
+        st.write(", ".join(top_tags))
+
+        # === Word Cloud ===
+        st.subheader("☁️ Word Cloud dari Judul & Tag")
+        text_blob = " ".join(all_tags)
+        if text_blob.strip():
+            wc = WordCloud(width=800, height=400, background_color="white").generate(text_blob)
+            fig, ax = plt.subplots(figsize=(10,5))
+            ax.imshow(wc, interpolation="bilinear")
+            ax.axis("off")
+            st.pyplot(fig)
+
+        # === Channel Authority ===
+        st.subheader("📺 Data Channel (Authority & Consistency)")
+        channel_stats = df.groupby("Channel").agg({
+            "Views":"sum",
+            "VPH":"mean",
+            "Judul":"count"
+        }).reset_index().rename(columns={"Judul":"Jumlah Video"})
+        channel_stats["Authority Score"] = round(channel_stats["VPH"] * channel_stats["Jumlah Video"],2)
+        st.dataframe(channel_stats)
+
+        # === Heatmap Upload Time (User Friendly) ===
+        st.subheader("🕒 Best Time to Upload (Heatmap)")
+
+        df["Publish Datetime"] = pd.to_datetime(df["Publish Time"])
+        df["Hour"] = df["Publish Datetime"].dt.hour
+        df["Day"] = df["Publish Datetime"].dt.day_name()
+
+        # Urutan hari agar rapi
+        day_order = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+        df["Day"] = pd.Categorical(df["Day"], categories=day_order, ordered=True)
+
+        heatmap_data = df.pivot_table(
+            index="Day",
+            columns="Hour",
+            values="Judul",
+            aggfunc="count"
+        ).fillna(0)
+
+        plt.figure(figsize=(14,6))
+        sns.heatmap(
+            heatmap_data,
+            cmap="YlGnBu",
+            linewidths=0.5,
+            annot=True,
+            fmt=".0f",
+            cbar_kws={'label': 'Jumlah Video Diupload'}
+        )
+        plt.title("📊 Waktu Upload Populer (Hari vs Jam)", fontsize=14, pad=20)
+        plt.xlabel("Jam (0 = Tengah Malam, 23 = 11 Malam)")
+        plt.ylabel("Hari")
+        st.pyplot(plt)
+
+        # Tambahan keterangan untuk pemula
+        st.markdown("""
+✅ **Cara Membaca Heatmap**  
+- Warna **lebih gelap/biru tua** = lebih banyak video kompetitor upload di jam tersebut.  
+- Angka di dalam kotak = jumlah video yang diupload.  
+- Cari jam/hari dengan warna **paling pekat** → itulah waktu paling sering dipakai untuk upload.  
+
+💡 **Tips untuk Pemula**  
+- Upload di jam **ramai (warna pekat)** untuk mengikuti tren.  
+- Upload di jam **sepi (warna terang)** jika ingin lebih menonjol dibanding kompetitor.
+""")
+
+        # === Top 10% Segmentation ===
+        st.subheader("🔥 Video Performance Segmentation (Top 10% VPH)")
+        threshold = df["VPH"].quantile(0.9)
+        top_videos = df[df["VPH"] >= threshold]
+        st.write(f"Menampilkan {len(top_videos)} video dengan VPH di atas {threshold:.2f}")
+        st.dataframe(top_videos[["Judul","Channel","Views","VPH","Publish Time"]])
+
+        # Rekomendasi judul dari pola top 10%
+        all_top_tags = []
+        for title in top_videos["Judul"].tolist():
+            all_top_tags.extend(title.split())
+        unique_top_tags = list(set([t for t in all_top_tags if len(t) > 3]))
+        st.subheader("📝 Judul dari Pola Video Top 10%")
+        for i in range(5):
+            st.write(f"{i+1}. {' '.join(random.sample(unique_top_tags, min(6,len(unique_top_tags)))).title()}")
+
+        # === Competitor Gap Finder ===
+        st.subheader("🕵️ Competitor Gap Finder")
+        freq_all = Counter([t.lower() for t in all_tags if len(t) > 3])
+        freq_top = Counter([t.lower() for t in all_top_tags if len(t) > 3])
+        gap_keywords = [tag for tag,count in freq_top.items() if freq_all[tag] <= 2]
+        st.write("💡 Keyword unik dari video top, jarang dipakai lainnya:")
+        st.write(", ".join(gap_keywords))
+
+        # === Trend Detector ===
+        st.subheader("📊 Trend Detector (Google Trends)")
+        try:
+            pytrends = TrendReq(hl='en-US', tz=360)
+            kw_list = [query]
+            geo = region if region != "ALL" else ""
+            pytrends.build_payload(kw_list, cat=0, timeframe='today 3-m', geo=geo, gprop='')
+            trend_data = pytrends.interest_over_time()
+            if not trend_data.empty:
+                st.line_chart(trend_data[query])
             else:
-                # 4) Buat rekomendasi judul baru
-                avg_len = int(combined["Panjang Judul"].mean()) if not combined.empty else 60
-                words = " ".join(combined["Judul"].tolist()).split()
-                unique_words = list(set([w for w in words if len(w) > 3]))
+                st.info("Tidak ada data tren untuk keyword ini.")
+        except Exception as e:
+            st.warning(f"Gagal ambil data tren: {e}")
 
-                rekom = []
-                for _ in range(10):
-                    sampled = random.sample(unique_words, min(len(unique_words), 6))
-                    new_title = " ".join(sampled).title()
-                    if len(new_title) < avg_len - 5:
-                        new_title += " Music Relaxation"
-                    rekom.append(new_title)
-
-                st.markdown('<p class="big-title">📝 Rekomendasi Judul</p>', unsafe_allow_html=True)
-                st.write(f"📏 Rata-rata panjang judul kompetitor: **{avg_len} karakter**")
-
-                for i, title in enumerate(rekom, 1):
-                    st.markdown(f"**{i}. {title}**")
-                    copy_to_clipboard(title, f"title{i}")
-
-                # 5) Tag relevan
-                st.markdown('<p class="big-title">🏷️ Tag Rekomendasi</p>', unsafe_allow_html=True)
-                terms_all = [t.lower() for t in " ".join(combined["Judul"].tolist()).split() if len(t) > 3]
-                freq = Counter(terms_all)
-                top_tags = [tag for tag, _ in freq.most_common(20)]
-
-                if top_tags:
-                    # Tampilkan tag per item
-                    for i, tag in enumerate(top_tags, 1):
-                        st.markdown(f"- {tag}")
-                        copy_to_clipboard(tag, f"tag{i}")
-
-                    # Tombol salin semua tag sekaligus
-                    all_tags_str = ", ".join(top_tags)
-                    st.markdown("### 📋 Salin Semua Tag")
-                    copy_to_clipboard(all_tags_str, "alltags")
-                else:
-                    st.info("Belum ada tag relevan yang bisa ditampilkan.")
+        # === Export CSV ===
+        st.download_button("⬇️ Download CSV", df.to_csv(index=False), file_name="youtube_vph_data.csv", mime="text/csv")
